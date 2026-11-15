@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scala 40 Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Layout: a felt card table — scoreboard on top, table (stock, discard, combinations) in the middle, your hand docked at the bottom. */
+  --felt: #164a3c;
+  --felt-deep: #0f3529;
+  --felt-line: #2b6b58;
+  --card: #fbf8f1;
+  --ink: #1d1f1c;
+  --red: #b3261e;
+  --gold: #e3b341;
+  --text: #eef3ee;
+  --muted: #a9c4b8;
+  --display: "DM Serif Display", Georgia, "Times New Roman", serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: radial-gradient(ellipse at 50% 30%, var(--felt) 0%, var(--felt-deep) 85%);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 15px;
+}
+button { font-family: var(--body); font-size: 14px; cursor: pointer; }
+button:focus-visible, .card:focus-visible, .meld:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+h1, h2 { font-family: var(--display); font-weight: 400; text-wrap: balance; margin: 0; }
+
+.app { display: flex; flex-direction: column; height: 100%; max-width: 1180px; margin: 0 auto; padding: 12px 16px; gap: 12px; }
+
+/* scoreboard */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.top h1 { font-size: 26px; margin-right: 8px; }
+.round { color: var(--muted); font-size: 13px; margin-right: auto; }
+.players { display: flex; flex-wrap: wrap; gap: 8px; }
+.pchip { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; background: rgba(0,0,0,.22); border: 1px solid var(--felt-line); font-size: 13px; }
+.pchip.turn { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.pchip.out { opacity: .45; text-decoration: line-through; }
+.pchip .score { font-variant-numeric: tabular-nums; font-weight: 600; }
+.badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--gold); color: #2a2205; font-weight: 600; }
+.badge.no { background: transparent; color: var(--muted); border: 1px solid var(--felt-line); font-weight: 500; }
+.ghost { background: transparent; color: var(--muted); border: 1px solid var(--felt-line); border-radius: 8px; padding: 6px 10px; }
+
+/* table */
+.table { flex: 1; min-height: 0; display: grid; grid-template-columns: 150px 1fr; gap: 14px; }
+.piles { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.pile { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.pile button { background: none; border: none; padding: 0; }
+.back { width: 64px; height: 92px; border-radius: 8px; border: 3px solid var(--card);
+  background: repeating-linear-gradient(45deg, #7a1d17 0 6px, #94271f 6px 12px); box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.pile .hint { color: var(--gold); font-weight: 500; }
+.melds { overflow-y: auto; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px; padding: 10px; border-radius: 12px; border: 1px dashed var(--felt-line); }
+.melds .empty { color: var(--muted); margin: auto; text-align: center; max-width: 40ch; }
+.meld { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px 8px; border-radius: 10px; background: rgba(0,0,0,.18); border: 1px solid transparent; }
+.meld.target { border-color: var(--gold); cursor: pointer; }
+.meld .owner { font-size: 11px; color: var(--muted); }
+.meld .row { display: flex; }
+.meld .card { width: 44px; height: 62px; font-size: 14px; margin-right: -14px; }
+.meld .card:last-child { margin-right: 0; }
+
+/* cards */
+.card { position: relative; width: 64px; height: 92px; border-radius: 8px; background: var(--card); color: var(--ink);
+  border: 1px solid #d9d2c3; box-shadow: 0 2px 5px rgba(0,0,0,.3); font-weight: 600; font-size: 18px; padding: 4px 6px;
+  display: flex; flex-direction: column; justify-content: space-between; user-select: none; flex-shrink: 0; }
+.card.red { color: var(--red); }
+.card .big { align-self: flex-end; font-size: 1.5em; line-height: 1; }
+.card.joker { background: linear-gradient(160deg, #fbf8f1 55%, #f3e3b1); color: #6a4c00; }
+.card.joker .sub { font-size: 10px; font-weight: 500; color: #8a6d1d; }
+
+/* hand */
+.dock { border-top: 1px solid var(--felt-line); padding-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 24px; }
+.status .who { font-family: var(--display); font-size: 20px; }
+.msg { font-size: 14px; color: var(--muted); }
+.msg.err { color: #ffb4a9; }
+.msg.ok { color: #b9f0c6; }
+.progress { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--felt-line); font-variant-numeric: tabular-nums; }
+.progress.done { border-color: var(--gold); color: var(--gold); }
+.hand { display: flex; flex-wrap: wrap; gap: 6px; min-height: 96px; padding-top: 14px; }
+.hand .card { cursor: pointer; transition: transform .12s ease; }
+.hand .card.sel { transform: translateY(-12px); box-shadow: 0 0 0 3px var(--gold), 0 6px 12px rgba(0,0,0,.4); }
+.hand .card.new::after { content: "new"; position: absolute; top: -9px; left: 4px; font-size: 10px; background: var(--gold); color: #2a2205; padding: 0 5px; border-radius: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: none; border-radius: 8px; padding: 9px 14px; background: var(--card); color: var(--ink); font-weight: 600; }
+.btn.primary { background: var(--gold); color: #2a2205; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* overlays */
+.overlay { position: fixed; inset: 0; background: rgba(6, 22, 17, .92); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.panel { background: var(--felt-deep); border: 1px solid var(--felt-line); border-radius: 14px; padding: 24px; width: min(520px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.panel h2 { font-size: 28px; }
+.panel p { margin: 0; color: var(--muted); line-height: 1.5; }
+.panel label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.panel input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--felt-line); background: rgba(0,0,0,.25); color: var(--text); }
+.panel .row { display: flex; gap: 8px; flex-wrap: wrap; }
+table.scores { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.scores th, table.scores td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--felt-line); }
+table.scores td.num, table.scores th.num { text-align: right; }
+.rules { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; padding-left: 18px; }
+.hidden { display: none !important; }
+
+@media (max-width: 640px) {
+  .table { grid-template-columns: 1fr; }
+  .piles { flex-direction: row; justify-content: center; }
+  .card { width: 52px; height: 76px; font-size: 15px; }
+  .back { width: 52px; height: 76px; }
+}
+@media (prefers-reduced-motion: reduce) { .hand .card { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="top">
+    <h1>Scala 40</h1>
+    <span class="round" id="round"></span>
+    <div class="players" id="players"></div>
+    <button class="ghost" id="rulesBtn" type="button">Rules</button>
+  </div>
+
+  <div class="table">
+    <div class="piles">
+      <div class="pile">
+        <button id="stockBtn" type="button" aria-label="Draw from the stock"><div class="back"></div></button>
+        <span id="stockCount"></span>
+      </div>
+      <div class="pile">
+        <button id="discardBtn" type="button" aria-label="Take the top discard"><div id="discardTop"></div></button>
+        <span>Discard pile</span>
+      </div>
+      <div class="pile"><span class="hint" id="drawHint"></span></div>
+    </div>
+    <div class="melds" id="melds"></div>
+  </div>
+
+  <div class="dock">
+    <div class="status">
+      <span class="who" id="who"></span>
+      <span class="progress" id="progress"></span>
+      <span class="msg" id="msg"></span>
+    </div>
+    <div class="hand" id="hand"></div>
+    <div class="actions">
+      <button class="btn primary" id="layBtn" type="button">Lay down selected</button>
+      <button class="btn" id="discardSelBtn" type="button">Discard selected</button>
+      <button class="btn" id="resetBtn" type="button">Undo this turn</button>
+      <button class="btn" id="clearBtn" type="button">Clear selection</button>
+    </div>
+  </div>
+</div>
+
+<!-- Setup -->
+<div class="overlay" id="setup">
+  <form class="panel" id="setupForm">
+    <h2>New game of Scala 40</h2>
+    <p>Pass-and-play: everyone shares this screen and takes turns. Hands stay hidden between turns.</p>
+    <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="row">
+      <button class="ghost" type="button" id="addPlayer">Add player</button>
+      <button class="ghost" type="button" id="removePlayer">Remove player</button>
+    </div>
+    <button class="btn primary" type="submit">Deal the cards</button>
+  </form>
+</div>
+
+<!-- Hand-off between turns -->
+<div class="overlay hidden" id="handoff">
+  <div class="panel">
+    <h2 id="handoffTitle"></h2>
+    <p id="handoffText">Pass the device. Everyone else, look away.</p>
+    <button class="btn primary" id="revealBtn" type="button">Show my cards</button>
+  </div>
+</div>
+
+<!-- End of round -->
+<div class="overlay hidden" id="roundOver">
+  <div class="panel">
+    <h2 id="roundTitle"></h2>
+    <p id="roundText"></p>
+    <table class="scores" id="roundTable"></table>
+    <button class="btn primary" id="nextRoundBtn" type="button"></button>
+  </div>
+</div>
+
+<!-- Rules -->
+<div class="overlay hidden" id="rules">
+  <div class="panel">
+    <h2>How to play</h2>
+    <ul class="rules">
+      <li><b>Your turn:</b> draw one card (stock or top discard), lay down or attach if you can, then discard one card.</li>
+      <li><b>Sets:</b> 3–4 cards of the same rank, all different suits. <b>Runs:</b> 3+ consecutive cards of one suit; Ace low (A‑2‑3) or high (Q‑K‑A), no wrap-around. One joker per combination.</li>
+      <li><b>Opening:</b> your first lay-down must total 40+ points in your own new combinations. Ace = 1 in A‑2‑3, otherwise 11; K/Q/J = 10.</li>
+      <li><b>Taking the discard:</b> only if you use it in a combination this turn.</li>
+      <li><b>Attaching and joker swaps:</b> from the turn after you open. Select cards, then click a combination. To swap a joker, select the real card it stands for and click that combination; you must use the joker this turn.</li>
+      <li><b>Going out:</b> lay down everything but one card, then discard it.</li>
+      <li><b>Penalties:</b> Joker 25, Ace 11, K/Q/J 10, others face value; never opened = 100. Going out in one turn without having opened doubles them. 101 = eliminated.</li>
+    </ul>
+    <button class="btn primary" id="closeRules" type="button">Back to the table</button>
+  </div>
+</div>
+
+<script>// Scala 40 rules engine — pure JavaScript, no dependencies.
+// Works in the browser (global `Scala40`) and in Node (module.exports).
+//
+// Standard rules implemented:
+//  - 2 French decks + 4 jokers (108 cards), 13 cards each, one card face up on the discard pile.
+//  - Turn = draw (stock, or top of discard pile) -> lay down / attach / swap jokers -> discard one card.
+//  - Sets: 3-4 cards of the same rank, all different suits. Runs: 3+ consecutive cards of one suit,
+//    Ace low (A-2-3) or high (Q-K-A), no wrap-around. At most one joker per combination.
+//  - Opening: your own new combinations laid in one turn must total at least 40 points.
+//  - Taking the discard: only to use it in the same turn (to open, or after having opened).
+//  - Attaching and joker swaps: only after you have opened, from your next turn onward.
+//    A joker taken back from the table must be used in the same turn.
+//  - Going out: you must finish with a discard (you can never lay down your last card).
+//  - Penalties: Joker 25, Ace 11, K/Q/J 10, others face value; never opened = 100.
+//    Going out in one turn without having opened before ("chiusura in mano") doubles the penalties.
+//  - A player reaching 101 is eliminated; the last player standing wins.
+
+(function (root) {
+  'use strict';
+
+  const SUITS = ['S', 'H', 'D', 'C'];
+  const SUIT_SYMBOL = { S: '♠', H: '♥', D: '♦', C: '♣' };
+  const RANK_LABEL = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+
+  const DEFAULT_OPTIONS = {
+    handSize: 13,
+    openingPoints: 40,
+    eliminationScore: 101,
+    notOpenedPenalty: 100,
+    jokerPenalty: 25,
+    doubleOnCloseInHand: true,
+  };
+
+  // ---------- cards ----------
+
+  function makeDeck() {
+    const cards = [];
+    let id = 0;
+    for (let d = 0; d < 2; d++) {
+      for (const suit of SUITS) {
+        for (let rank = 1; rank <= 13; rank++) cards.push({ id: id++, rank, suit });
+      }
+      cards.push({ id: id++, rank: 0, suit: null }); // jokers
+      cards.push({ id: id++, rank: 0, suit: null });
+    }
+    return cards;
+  }
+
+  function isJoker(c) { return c.rank === 0; }
+
+  function cardLabel(c) {
+    if (isJoker(c)) return 'Joker';
+    return (RANK_LABEL[c.rank] || String(c.rank)) + SUIT_SYMBOL[c.suit];
+  }
+
+  // Penalty value of a card left in hand.
+  function penaltyValue(c, opts) {
+    if (isJoker(c)) return (opts || DEFAULT_OPTIONS).jokerPenalty;
+    if (c.rank === 1) return 11;
+    if (c.rank >= 11) return 10;
+    return c.rank;
+  }
+
+  // Value of a position in a run (1 = low ace, 14 = high ace) or of a rank in a set.
+  function posValue(pos) {
+    if (pos === 1 || pos === 14) return pos === 1 ? 1 : 11;
+    if (pos >= 11) return 10;
+    return pos;
+  }
+  function setRankValue(rank) {
+    if (rank === 1) return 11;
+    if (rank >= 11) return 10;
+    return rank;
+  }
+
+  function shuffle(arr, rng) {
+    const r = rng || Math.random;
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // ---------- combination validation ----------
+
+  // Returns { ok, type, entries, value } or { ok:false, error }.
+  // entries: for runs [{card, pos}] ordered by pos; for sets [{card}].
+  // opts.type forces 'set' or 'run'; opts.fixedJokerPos keeps an existing joker where it was.
+  function validateMeld(cards, opts) {
+    opts = opts || {};
+    if (!cards || cards.length < 3) return { ok: false, error: 'A combination needs at least 3 cards.' };
+    const jokers = cards.filter(isJoker);
+    if (jokers.length > 1) return { ok: false, error: 'Only one joker per combination.' };
+    const tries = opts.type ? [opts.type] : ['set', 'run'];
+    let lastError = 'Not a valid set or run.';
+    for (const t of tries) {
+      const res = t === 'set' ? validateSet(cards) : validateRun(cards, opts.fixedJokerPos);
+      if (res.ok) return res;
+      lastError = res.error;
+    }
+    return { ok: false, error: lastError };
+  }
+
+  function validateSet(cards) {
+    if (cards.length > 4) return { ok: false, error: 'A set has at most 4 cards.' };
+    const real = cards.filter((c) => !isJoker(c));
+    if (real.length === 0) return { ok: false, error: 'A set needs real cards.' };
+    const rank = real[0].rank;
+    if (!real.every((c) => c.rank === rank)) return { ok: false, error: 'All cards in a set must have the same rank.' };
+    const suits = new Set(real.map((c) => c.suit));
+    if (suits.size !== real.length) return { ok: false, error: 'A set cannot repeat a suit.' };
+    return {
+      ok: true,
+      type: 'set',
+      rank,
+      entries: cards.map((card) => ({ card })),
+      value: setRankValue(rank) * cards.length,
+    };
+  }
+
+  function validateRun(cards, fixedJokerPos) {
+    const real = cards.filter((c) => !isJoker(c));
+    const joker = cards.find(isJoker) || null;
+    if (real.length < 2) return { ok: false, error: 'A run needs at least 2 real cards.' };
+    const suit = real[0].suit;
+    if (!real.every((c) => c.suit === suit)) return { ok: false, error: 'All cards in a run must be the same suit.' };
+    const hasAce = real.some((c) => c.rank === 1);
+    const options = hasAce ? [false, true] : [false];
+    for (const aceHigh of options) {
+      const mapped = real.map((c) => ({ card: c, pos: c.rank === 1 ? (aceHigh ? 14 : 1) : c.rank }));
+      const positions = mapped.map((m) => m.pos);
+      if (new Set(positions).size !== positions.length) continue; // duplicate rank
+      mapped.sort((a, b) => a.pos - b.pos);
+      const min = mapped[0].pos;
+      const max = mapped[mapped.length - 1].pos;
+      const gaps = max - min + 1 - mapped.length;
+      const jokerCount = joker ? 1 : 0;
+      if (gaps > jokerCount) continue;
+      let jokerPos = null;
+      if (joker) {
+        let candidates;
+        if (gaps === 1) {
+          const present = new Set(positions);
+          candidates = [];
+          for (let p = min; p <= max; p++) if (!present.has(p)) candidates.push(p);
+        } else {
+          candidates = [];
+          if (max + 1 <= 14) candidates.push(max + 1);
+          if (min - 1 >= 1) candidates.push(min - 1);
+        }
+        if (fixedJokerPos != null) {
+          if (!candidates.includes(fixedJokerPos)) continue;
+          jokerPos = fixedJokerPos;
+        } else {
+          if (candidates.length === 0) continue;
+          jokerPos = candidates[0];
+        }
+      }
+      const entries = mapped.slice();
+      if (joker) entries.push({ card: joker, pos: jokerPos });
+      entries.sort((a, b) => a.pos - b.pos);
+      if (entries[0].pos < 1 || entries[entries.length - 1].pos > 14) continue;
+      const value = entries.reduce((s, e) => s + posValue(e.pos), 0);
+      return { ok: true, type: 'run', suit, entries, value };
+    }
+    return { ok: false, error: 'Not a valid run (same suit, consecutive, Ace low or high, no wrap-around).' };
+  }
+
+  // ---------- game ----------
+
+  function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+  function newGame(names, options, rng) {
+    if (!names || names.length < 2 || names.length > 6) throw new Error('Scala 40 needs 2 to 6 players.');
+    const g = {
+      opts: Object.assign({}, DEFAULT_OPTIONS, options || {}),
+      players: names.map((name) => ({ name, score: 0, eliminated: false })),
+      roundNumber: 0,
+      dealer: names.length - 1,
+      round: null,
+      history: [],
+      winner: null,
+      log: [],
+    };
+    startRound(g, rng);
+    return g;
+  }
+
+  function activeIndexes(g) {
+    return g.players.map((p, i) => (p.eliminated ? -1 : i)).filter((i) => i >= 0);
+  }
+
+  function nextActive(g, from) {
+    const n = g.players.length;
+    for (let k = 1; k <= n; k++) {
+      const i = (from + k) % n;
+      if (!g.players[i].eliminated) return i;
+    }
+    return from;
+  }
+
+  function startRound(g, rng) {
+    g.roundNumber += 1;
+    g.dealer = nextActive(g, g.dealer);
+    const deck = shuffle(makeDeck(), rng);
+    const hands = g.players.map(() => []);
+    for (let k = 0; k < g.opts.handSize; k++) {
+      for (const i of activeIndexes(g)) hands[i].push(deck.pop());
+    }
+    const discard = [deck.pop()];
+    const first = nextActive(g, g.dealer);
+    g.round = {
+      stock: deck,
+      discard,
+      hands,
+      melds: [],
+      nextMeldId: 1,
+      opened: g.players.map(() => false),
+      turn: first,
+      phase: 'draw', // 'draw' -> 'play' -> (discard) -> next player's 'draw'; 'over' at round end
+      turnState: null,
+      snapshot: null,
+      result: null,
+    };
+    g.log.push(`Round ${g.roundNumber}: ${g.players[g.dealer].name} deals. ${g.players[first].name} starts.`);
+    return g;
+  }
+
+  function fail(error) { return { ok: false, error }; }
+
+  function findInHand(hand, ids) {
+    const cards = [];
+    for (const id of ids) {
+      const c = hand.find((x) => x.id === id);
+      if (!c) return null;
+      cards.push(c);
+    }
+    return cards;
+  }
+
+  function removeFromHand(hand, ids) {
+    for (const id of ids) {
+      const i = hand.findIndex((x) => x.id === id);
+      if (i >= 0) hand.splice(i, 1);
+    }
+  }
+
+  function beginTurnState(g) {
+    const r = g.round;
+    r.turnState = {
+      startOpened: r.opened[r.turn],
+      tookDiscardId: null,
+      newMeldIds: [],
+      newMeldPoints: 0,
+      jokersToUse: [],
+    };
+  }
+
+  function drawStock(g) {
+    const r = g.round;
+    if (r.phase !== 'draw') return fail('You have already drawn this turn.');
+    if (r.stock.length === 0) {
+      const top = r.discard.pop();
+      r.stock = shuffle(r.discard);
+      r.discard = top ? [top] : [];
+      g.log.push('The stock ran out: the discard pile was reshuffled.');
+      if (r.stock.length === 0) return fail('No cards left to draw.');
+    }
+    const c = r.stock.pop();
+    r.hands[r.turn].push(c);
+    beginTurnState(g);
+    r.phase = 'play';
+    r.snapshot = clone(r);
+    return { ok: true, card: c };
+  }
+
+  function takeDiscard(g) {
+    const r = g.round;
+    if (r.phase !== 'draw') return fail('You have already drawn this turn.');
+    if (r.discard.length === 0) return fail('The discard pile is empty.');
+    const c = r.discard.pop();
+    r.hands[r.turn].push(c);
+    beginTurnState(g);
+    r.turnState.tookDiscardId = c.id;
+    r.phase = 'play';
+    r.snapshot = clone(r);
+    return { ok: true, card: c };
+  }
+
+  // Undo everything done since the draw.
+  function resetTurn(g) {
+    const r = g.round;
+    if (r.phase !== 'play' || !r.snapshot) return fail('Nothing to reset.');
+    const snap = clone(r.snapshot);
+    g.round = snap;
+    g.round.snapshot = clone(snap);
+    return { ok: true };
+  }
+
+  function useJokers(ts, cards) {
+    for (const c of cards) {
+      const i = ts.jokersToUse.indexOf(c.id);
+      if (i >= 0) ts.jokersToUse.splice(i, 1);
+    }
+  }
+
+  function layMeld(g, cardIds) {
+    const r = g.round;
+    if (r.phase !== 'play') return fail('Draw a card first.');
+    const hand = r.hands[r.turn];
+    const cards = findInHand(hand, cardIds);
+    if (!cards) return fail('Those cards are not in your hand.');
+    if (hand.length - cards.length < 1) return fail('You must keep one card to discard.');
+    const v = validateMeld(cards);
+    if (!v.ok) return fail(v.error);
+    const meld = {
+      id: r.nextMeldId++,
+      owner: r.turn,
+      type: v.type,
+      entries: v.entries,
+    };
+    r.melds.push(meld);
+    removeFromHand(hand, cardIds);
+    const ts = r.turnState;
+    ts.newMeldIds.push(meld.id);
+    ts.newMeldPoints += v.value;
+    useJokers(ts, cards);
+    return { ok: true, meld, value: v.value };
+  }
+
+  function meldCards(meld) { return meld.entries.map((e) => e.card); }
+
+  function jokerPosOf(meld) {
+    const e = meld.entries.find((x) => isJoker(x.card));
+    return e && meld.type === 'run' ? e.pos : null;
+  }
+
+  function attach(g, meldId, cardIds) {
+    const r = g.round;
+    if (r.phase !== 'play') return fail('Draw a card first.');
+    const ts = r.turnState;
+    if (!ts.startOpened) return fail('You can attach cards only after you have opened, from your next turn.');
+    const meld = r.melds.find((m) => m.id === meldId);
+    if (!meld) return fail('No such combination.');
+    const hand = r.hands[r.turn];
+    const cards = findInHand(hand, cardIds);
+    if (!cards || cards.length === 0) return fail('Select cards from your hand to attach.');
+    if (hand.length - cards.length < 1) return fail('You must keep one card to discard.');
+    const v = validateMeld(meldCards(meld).concat(cards), { type: meld.type, fixedJokerPos: jokerPosOf(meld) });
+    if (!v.ok) return fail('Those cards do not fit that combination.');
+    meld.entries = v.entries;
+    removeFromHand(hand, cardIds);
+    useJokers(ts, cards);
+    return { ok: true, meld };
+  }
+
+  // Swap a joker on the table for the real card it stands for; the joker goes to the hand.
+  function swapJokerSafe(g, meldId, cardId) {
+    const r = g.round;
+    const meld = r.melds.find((m) => m.id === meldId);
+    const je = meld && meld.entries.find((e) => isJoker(e.card));
+    const jokerCard = je ? je.card : null;
+    const res = swapJokerCore(g, meldId, cardId);
+    if (!res.ok) return res;
+    const hand = r.hands[r.turn];
+    hand.splice(hand.findIndex((c) => c.id === cardId), 1);
+    hand.push(jokerCard);
+    r.turnState.jokersToUse.push(jokerCard.id);
+    return { ok: true, joker: jokerCard };
+  }
+
+  function swapJokerCore(g, meldId, cardId) {
+    const r = g.round;
+    if (r.phase !== 'play') return fail('Draw a card first.');
+    const ts = r.turnState;
+    if (!ts.startOpened) return fail('You can swap jokers only after you have opened, from your next turn.');
+    const meld = r.melds.find((m) => m.id === meldId);
+    if (!meld) return fail('No such combination.');
+    const je = meld.entries.find((e) => isJoker(e.card));
+    if (!je) return fail('That combination has no joker.');
+    const hand = r.hands[r.turn];
+    const card = hand.find((c) => c.id === cardId);
+    if (!card || isJoker(card)) return fail('Select the real card the joker stands for.');
+    if (meld.type === 'run') {
+      const suit = meld.entries.find((e) => !isJoker(e.card)).card.suit;
+      const wantRank = je.pos === 14 ? 1 : je.pos;
+      if (card.suit !== suit || card.rank !== wantRank) return fail('That card is not the one the joker stands for.');
+    } else {
+      if (meld.entries.length < 4) return fail('In a set, the joker can be taken only from a full set of four.');
+      const real = meld.entries.filter((e) => !isJoker(e.card)).map((e) => e.card);
+      const missing = SUITS.filter((s) => !real.some((c) => c.suit === s));
+      if (card.rank !== real[0].rank || !missing.includes(card.suit)) return fail('That card is not the one the joker stands for.');
+    }
+    je.card = card;
+    return { ok: true };
+  }
+
+  function discardCard(g, cardId) {
+    const r = g.round;
+    if (r.phase !== 'play') return fail('Draw a card first.');
+    const ts = r.turnState;
+    const hand = r.hands[r.turn];
+    const card = hand.find((c) => c.id === cardId);
+    if (!card) return fail('That card is not in your hand.');
+    if (ts.tookDiscardId != null && hand.some((c) => c.id === ts.tookDiscardId)) {
+      return fail('You took the discard: you must use it in a combination this turn (or reset the turn).');
+    }
+    if (ts.jokersToUse.length) return fail('You must use the joker you took from the table this turn.');
+    if (!ts.startOpened && ts.newMeldIds.length > 0 && ts.newMeldPoints < g.opts.openingPoints) {
+      return fail(`To open you need at least ${g.opts.openingPoints} points (you have ${ts.newMeldPoints}). Add combinations or reset the turn.`);
+    }
+    if (!ts.startOpened && ts.newMeldPoints >= g.opts.openingPoints) {
+      r.opened[r.turn] = true;
+      g.log.push(`${g.players[r.turn].name} opens with ${ts.newMeldPoints} points.`);
+    }
+    hand.splice(hand.indexOf(card), 1);
+    r.discard.push(card);
+    r.snapshot = null;
+    if (hand.length === 0) {
+      endRound(g, r.turn, !ts.startOpened);
+      return { ok: true, wentOut: true };
+    }
+    r.turn = nextActive(g, r.turn);
+    r.phase = 'draw';
+    r.turnState = null;
+    return { ok: true };
+  }
+
+  function endRound(g, winnerIdx, closedInHand) {
+    const r = g.round;
+    const doubled = closedInHand && g.opts.doubleOnCloseInHand;
+    const penalties = g.players.map(() => 0);
+    for (const i of activeIndexes(g)) {
+      if (i === winnerIdx) continue;
+      let p = r.opened[i]
+        ? r.hands[i].reduce((s, c) => s + penaltyValue(c, g.opts), 0)
+        : g.opts.notOpenedPenalty;
+      if (doubled) p *= 2;
+      penalties[i] = p;
+      g.players[i].score += p;
+    }
+    const newlyOut = [];
+    for (const i of activeIndexes(g)) {
+      if (g.players[i].score >= g.opts.eliminationScore) {
+        g.players[i].eliminated = true;
+        newlyOut.push(i);
+      }
+    }
+    r.phase = 'over';
+    r.result = { winner: winnerIdx, closedInHand, doubled, penalties, eliminated: newlyOut };
+    g.history.push({ round: g.roundNumber, winner: winnerIdx, penalties, doubled });
+    g.log.push(`${g.players[winnerIdx].name} goes out${doubled ? ' in one turn (penalties doubled)' : ''}.`);
+    const left = activeIndexes(g);
+    if (left.length <= 1) g.winner = left.length === 1 ? left[0] : winnerIdx;
+  }
+
+  function nextRound(g, rng) {
+    if (g.winner != null) return fail('The game is over.');
+    if (!g.round || g.round.phase !== 'over') return fail('The round is still being played.');
+    startRound(g, rng);
+    return { ok: true };
+  }
+
+  // Sort helper for displaying a hand: by suit then rank, jokers last.
+  function sortHand(hand) {
+    const order = { S: 0, H: 1, C: 2, D: 3 };
+    return hand.slice().sort((a, b) => {
+      if (isJoker(a) !== isJoker(b)) return isJoker(a) ? 1 : -1;
+      if (isJoker(a)) return a.id - b.id;
+      if (a.suit !== b.suit) return order[a.suit] - order[b.suit];
+      return a.rank - b.rank;
+    });
+  }
+
+  const api = {
+    SUITS, SUIT_SYMBOL, DEFAULT_OPTIONS,
+    makeDeck, shuffle, isJoker, cardLabel, penaltyValue,
+    validateMeld,
+    newGame, nextRound, drawStock, takeDiscard, resetTurn,
+    layMeld, attach, swapJoker: swapJokerSafe, discard: discardCard,
+    sortHand, activeIndexes,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.Scala40 = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+(function () {
+  'use strict';
+  const S = window.Scala40;
+  const $ = (id) => document.getElementById(id);
+  let game = null;
+  let selected = new Set();
+  let revealedFor = null;
+  let lastDrawnId = null;
+  let message = { text: '', kind: '' };
+
+  // ---------- setup ----------
+  let names = ['Player 1', 'Player 2', 'Player 3'];
+  function renderNameFields() {
+    const box = $('nameFields');
+    box.innerHTML = '';
+    names.forEach((n, i) => {
+      const label = document.createElement('label');
+      label.htmlFor = 'pname' + i;
+      label.textContent = 'Player ' + (i + 1);
+      const input = document.createElement('input');
+      input.id = 'pname' + i;
+      input.value = n;
+      input.maxLength = 16;
+      input.addEventListener('input', () => { names[i] = input.value; });
+      label.appendChild(input);
+      box.appendChild(label);
+    });
+    $('addPlayer').disabled = names.length >= 4;
+    $('removePlayer').disabled = names.length <= 2;
+  }
+  $('addPlayer').onclick = () => { if (names.length < 4) { names.push('Player ' + (names.length + 1)); renderNameFields(); } };
+  $('removePlayer').onclick = () => { if (names.length > 2) { names.pop(); renderNameFields(); } };
+  $('setupForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const clean = names.map((n, i) => (n || '').trim() || 'Player ' + (i + 1));
+    game = S.newGame(clean);
+    selected.clear(); revealedFor = null; lastDrawnId = null;
+    say('');
+    $('setup').classList.add('hidden');
+    render();
+  });
+
+  // ---------- helpers ----------
+  function say(text, kind) { message = { text, kind: kind || '' }; }
+  function rankLabel(r) { return r === 1 ? 'A' : r === 11 ? 'J' : r === 12 ? 'Q' : r === 13 ? 'K' : String(r); }
+  function posLabel(p) { return rankLabel(p === 14 ? 1 : p); }
+
+  function cardEl(card, extra) {
+    const d = document.createElement('div');
+    d.className = 'card';
+    if (S.isJoker(card)) {
+      d.classList.add('joker');
+      d.innerHTML = '<span>★</span><span class="sub">' + (extra && extra.stands ? extra.stands : 'Joker') + '</span><span class="big">★</span>';
+    } else {
+      if (card.suit === 'H' || card.suit === 'D') d.classList.add('red');
+      const sym = S.SUIT_SYMBOL[card.suit];
+      d.innerHTML = '<span>' + rankLabel(card.rank) + sym + '</span><span class="big">' + sym + '</span>';
+    }
+    d.setAttribute('aria-label', S.cardLabel(card));
+    return d;
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    if (!game) return;
+    const r = game.round;
+    const me = r.turn;
+    const hidden = revealedFor !== me && r.phase !== 'over';
+
+    $('round').textContent = 'Round ' + game.roundNumber + ' · dealer ' + game.players[game.dealer].name;
+    const pbox = $('players'); pbox.innerHTML = '';
+    game.players.forEach((p, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'pchip' + (i === me && r.phase !== 'over' ? ' turn' : '') + (p.eliminated ? ' out' : '');
+      const opened = r.opened[i];
+      chip.innerHTML = '<span>' + escapeHtml(p.name) + '</span>' +
+        '<span class="score">' + p.score + '</span>' +
+        (p.eliminated ? '' : '<span class="badge' + (opened ? '' : ' no') + '">' + (opened ? 'open' : (r.hands[i].length + ' cards')) + '</span>');
+      pbox.appendChild(chip);
+    });
+
+    $('stockCount').textContent = r.stock.length + ' in stock';
+    const dt = $('discardTop'); dt.innerHTML = '';
+    if (r.discard.length) dt.appendChild(cardEl(r.discard[r.discard.length - 1]));
+    else { const e = document.createElement('div'); e.className = 'back'; e.style.opacity = '.2'; dt.appendChild(e); }
+    $('drawHint').textContent = r.phase === 'draw' && !hidden ? 'Draw a card' : '';
+    $('stockBtn').disabled = r.phase !== 'draw' || hidden;
+    $('discardBtn').disabled = r.phase !== 'draw' || hidden || !r.discard.length;
+
+    // combinations on the table
+    const mbox = $('melds'); mbox.innerHTML = '';
+    if (!r.melds.length) {
+      const e = document.createElement('div'); e.className = 'empty';
+      e.textContent = 'No combinations on the table yet. Open with sets and runs worth at least 40 points.';
+      mbox.appendChild(e);
+    }
+    const canTarget = r.phase === 'play' && selected.size > 0 && r.turnState && r.turnState.startOpened;
+    r.melds.forEach((m) => {
+      const box = document.createElement('div');
+      box.className = 'meld' + (canTarget ? ' target' : '');
+      box.tabIndex = canTarget ? 0 : -1;
+      const owner = document.createElement('div'); owner.className = 'owner';
+      owner.textContent = game.players[m.owner].name + ' · ' + (m.type === 'run' ? 'run' : 'set');
+      const row = document.createElement('div'); row.className = 'row';
+      m.entries.forEach((e) => {
+        let stands = null;
+        if (S.isJoker(e.card)) {
+          if (m.type === 'run') {
+            const suit = m.entries.find((x) => !S.isJoker(x.card)).card.suit;
+            stands = posLabel(e.pos) + S.SUIT_SYMBOL[suit];
+          } else {
+            stands = rankLabel(m.entries.find((x) => !S.isJoker(x.card)).card.rank) + '?';
+          }
+        }
+        row.appendChild(cardEl(e.card, { stands }));
+      });
+      box.appendChild(owner); box.appendChild(row);
+      if (canTarget) {
+        box.onclick = () => onMeldClick(m.id);
+        box.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onMeldClick(m.id); } };
+        box.setAttribute('role', 'button');
+        box.setAttribute('aria-label', 'Attach selected cards to ' + game.players[m.owner].name + "'s " + m.type);
+      }
+      mbox.appendChild(box);
+    });
+
+    // status
+    $('who').textContent = r.phase === 'over' ? 'Round over' : game.players[me].name + "'s turn";
+    const ts = r.turnState;
+    const prog = $('progress');
+    if (r.phase !== 'over' && !r.opened[me] && !hidden) {
+      const pts = ts ? ts.newMeldPoints : 0;
+      prog.textContent = 'Opening ' + pts + ' / ' + game.opts.openingPoints;
+      prog.className = 'progress' + (pts >= game.opts.openingPoints ? ' done' : '');
+    } else { prog.textContent = ''; prog.className = 'progress hidden'; }
+    const msg = $('msg'); msg.textContent = message.text; msg.className = 'msg ' + message.kind;
+
+    // hand
+    const hbox = $('hand'); hbox.innerHTML = '';
+    if (!hidden) {
+      S.sortHand(r.hands[me]).forEach((c) => {
+        const el = cardEl(c);
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-pressed', selected.has(c.id) ? 'true' : 'false');
+        if (selected.has(c.id)) el.classList.add('sel');
+        if (c.id === lastDrawnId && r.phase === 'play') el.classList.add('new');
+        el.onclick = () => toggle(c.id);
+        el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(c.id); } };
+        hbox.appendChild(el);
+      });
+    }
+    const playing = r.phase === 'play' && !hidden;
+    $('layBtn').disabled = !playing || selected.size < 3;
+    $('discardSelBtn').disabled = !playing || selected.size !== 1;
+    $('resetBtn').disabled = !playing;
+    $('clearBtn').disabled = !playing || selected.size === 0;
+
+    // overlays
+    $('handoff').classList.toggle('hidden', !hidden || !$('setup').classList.contains('hidden') || r.phase === 'over');
+    $('handoffTitle').textContent = game.players[me].name + ', your turn';
+    renderRoundOver();
+  }
+
+  function renderRoundOver() {
+    const r = game.round;
+    const box = $('roundOver');
+    if (r.phase !== 'over') { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const res = r.result;
+    const w = game.players[res.winner].name;
+    $('roundTitle').textContent = game.winner != null ? game.players[game.winner].name + ' wins the game!' : w + ' goes out';
+    $('roundText').textContent = res.doubled
+      ? w + ' went out in a single turn without having opened before, so penalties are doubled.'
+      : 'Penalties are the cards left in each hand (100 if never opened). 101 or more and you are out.';
+    const t = $('roundTable');
+    t.innerHTML = '<tr><th>Player</th><th class="num">This round</th><th class="num">Total</th><th></th></tr>';
+    game.players.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      const status = p.eliminated ? (res.eliminated.includes(i) ? 'eliminated' : 'out') : (i === res.winner ? 'went out' : '');
+      tr.innerHTML = '<td>' + escapeHtml(p.name) + '</td><td class="num">' + (res.penalties[i] ? '+' + res.penalties[i] : '0') +
+        '</td><td class="num">' + p.score + '</td><td>' + status + '</td>';
+      t.appendChild(tr);
+    });
+    $('nextRoundBtn').textContent = game.winner != null ? 'New game' : 'Deal the next round';
+  }
+
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+
+  // ---------- actions ----------
+  function toggle(id) {
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    render();
+  }
+  function act(res, okText) {
+    if (res.ok) { say(okText || '', 'ok'); selected.clear(); }
+    else say(res.error, 'err');
+    render();
+    return res;
+  }
+
+  $('revealBtn').onclick = () => { revealedFor = game.round.turn; say(''); render(); };
+  $('stockBtn').onclick = () => {
+    const res = S.drawStock(game);
+    if (res.ok) lastDrawnId = res.card.id;
+    act(res, res.ok ? 'You drew ' + S.cardLabel(res.card) + '.' : '');
+  };
+  $('discardBtn').onclick = () => {
+    const res = S.takeDiscard(game);
+    if (res.ok) lastDrawnId = res.card.id;
+    act(res, res.ok ? 'You took ' + S.cardLabel(res.card) + '. Use it in a combination this turn.' : '');
+  };
+  $('layBtn').onclick = () => {
+    const res = S.layMeld(game, Array.from(selected));
+    act(res, res.ok ? 'Laid down a ' + res.meld.type + ' worth ' + res.value + ' points.' : '');
+  };
+  $('discardSelBtn').onclick = () => {
+    const id = Array.from(selected)[0];
+    const r = game.round;
+    const card = r.hands[r.turn].find((c) => c.id === id);
+    const res = S.discard(game, id);
+    if (res.ok) { lastDrawnId = null; say(res.wentOut ? '' : game.players[(game.round.turn)].name + ' is next.', 'ok'); selected.clear(); render(); }
+    else act(res);
+    void card;
+  };
+  $('resetBtn').onclick = () => act(S.resetTurn(game), 'Turn undone: you are back to just after your draw.');
+  $('clearBtn').onclick = () => { selected.clear(); render(); };
+
+  function onMeldClick(meldId) {
+    const ids = Array.from(selected);
+    const meld = game.round.melds.find((m) => m.id === meldId);
+    const hasJoker = meld && meld.entries.some((e) => S.isJoker(e.card));
+    if (ids.length === 1 && hasJoker) {
+      const sw = S.swapJoker(game, meldId, ids[0]);
+      if (sw.ok) return act(sw, 'You took the joker. Use it in a combination this turn.');
+    }
+    act(S.attach(game, meldId, ids), 'Attached.');
+  }
+
+  $('nextRoundBtn').onclick = () => {
+    if (game.winner != null) { game = null; $('roundOver').classList.add('hidden'); $('setup').classList.remove('hidden'); renderNameFields(); return; }
+    S.nextRound(game);
+    revealedFor = null; selected.clear(); lastDrawnId = null; say('');
+    render();
+  };
+  $('rulesBtn').onclick = () => $('rules').classList.remove('hidden');
+  $('closeRules').onclick = () => $('rules').classList.add('hidden');
+
+  renderNameFields();
+})();
+</script>
+</body>
+</html>

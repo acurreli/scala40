@@ -1,0 +1,8 @@
+{
+  "name": "scala40",
+  "version": "0.1.0",
+  "description": "Scala 40 (Italian rummy) — pass-and-play prototype",
+  "scripts": { "test": "node --test test/engine.test.js", "build": "node build.js" },
+  "license": "UNLICENSED",
+  "private": true
+}
