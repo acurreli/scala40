@@ -114,7 +114,23 @@ table.scores td.num, table.scores th.num { text-align: right; }
 .rules { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; padding-left: 18px; }
 .hidden { display: none !important; }
 
+
+.panel h3 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 0; }
+.panel .section { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--felt-line); }
+.panel .err { color: #ffb4a9; font-size: 14px; min-height: 1em; }
+.invite { display: flex; gap: 8px; align-items: center; }
+.invite input { flex: 1; font-size: 13px; }
+.seats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.seats li { display: flex; align-items: center; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #6fd18b; flex-shrink: 0; }
+.dot.off { background: #8a8f8b; }
+.log { list-style: none; margin: 0; padding: 0; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; max-width: 150px; }
+.log li:last-child { color: var(--text); }
+.banner { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); background: #7a1d17; color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; z-index: 20; }
+.tablecode { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+
 @media (max-width: 640px) {
+  .log { max-width: none; }
   .table { grid-template-columns: 1fr; }
   .piles { flex-direction: row; justify-content: center; }
   .card { width: 52px; height: 76px; font-size: 15px; }
@@ -143,6 +159,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
         <span>Discard pile</span>
       </div>
       <div class="pile"><span class="hint" id="drawHint"></span></div>
+      <ul class="log" id="log" aria-live="polite"></ul>
     </div>
     <div class="melds" id="melds"></div>
   </div>
@@ -165,25 +182,73 @@ table.scores td.num, table.scores th.num { text-align: right; }
   </div>
 </div>
 
-<!-- Setup -->
-<div class="overlay" id="setup">
+<!-- Home -->
+<div class="overlay hidden" id="home">
+  <div class="panel">
+    <h2>Scala 40</h2>
+    <div class="section">
+      <h3>Play online with friends</h3>
+      <p>Create a table, then send the invite link. Everyone plays from their own phone or computer.</p>
+      <label for="onlineName">Your name<input id="onlineName" maxlength="16" autocomplete="nickname"></label>
+      <button class="btn primary" id="createBtn" type="button">Create a table</button>
+      <div class="err" id="homeErr"></div>
+    </div>
+    <div class="section">
+      <h3>Pass and play</h3>
+      <p>Everyone shares this one screen and takes turns.</p>
+      <button class="btn" id="localBtn" type="button">Set up players</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pass-and-play setup -->
+<div class="overlay hidden" id="setup">
   <form class="panel" id="setupForm">
-    <h2>New game of Scala 40</h2>
-    <p>Pass-and-play: everyone shares this screen and takes turns. Hands stay hidden between turns.</p>
+    <h2>Pass and play</h2>
+    <p>Hands stay hidden between turns: pass the device when asked.</p>
     <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="row">
       <button class="ghost" type="button" id="addPlayer">Add player</button>
       <button class="ghost" type="button" id="removePlayer">Remove player</button>
+      <button class="ghost" type="button" id="backHome">Back</button>
     </div>
     <button class="btn primary" type="submit">Deal the cards</button>
   </form>
 </div>
 
-<!-- Hand-off between turns -->
+<!-- Join from an invite link -->
+<div class="overlay hidden" id="join">
+  <div class="panel">
+    <h2 id="joinTitle">Join the table</h2>
+    <p>You've been invited to a game of Scala 40.</p>
+    <label for="joinName">Your name<input id="joinName" maxlength="16" autocomplete="nickname"></label>
+    <button class="btn primary" id="joinBtn" type="button">Take a seat</button>
+    <div class="err" id="joinErr"></div>
+    <button class="ghost" id="joinHome" type="button">Start my own table instead</button>
+  </div>
+</div>
+
+<!-- Waiting room -->
+<div class="overlay hidden" id="lobby">
+  <div class="panel">
+    <h2>Table <span class="tablecode" id="lobbyCode"></span></h2>
+    <p>Send this link to the people you want to play with (2 to 4 players).</p>
+    <div class="invite">
+      <input id="inviteLink" readonly aria-label="Invite link">
+      <button class="btn" id="copyBtn" type="button">Copy link</button>
+    </div>
+    <ul class="seats" id="seatList"></ul>
+    <button class="btn primary" id="startBtn" type="button">Deal the cards</button>
+    <p id="lobbyNote"></p>
+    <div class="err" id="lobbyErr"></div>
+  </div>
+</div>
+
+<!-- Hand-off between turns (pass and play) -->
 <div class="overlay hidden" id="handoff">
   <div class="panel">
     <h2 id="handoffTitle"></h2>
-    <p id="handoffText">Pass the device. Everyone else, look away.</p>
+    <p>Pass the device. Everyone else, look away.</p>
     <button class="btn primary" id="revealBtn" type="button">Show my cards</button>
   </div>
 </div>
@@ -210,321 +275,17 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <li><b>Attaching and joker swaps:</b> from the turn after you open. Select cards, then click a combination. To swap a joker, select the real card it stands for and click that combination; you must use the joker this turn.</li>
       <li><b>Going out:</b> lay down everything but one card, then discard it.</li>
       <li><b>Penalties:</b> Joker 25, Ace 11, K/Q/J 10, others face value; never opened = 100. Going out in one turn without having opened doubles them. 101 = eliminated.</li>
+      <li><b>Your hand:</b> drag cards to arrange them however you like.</li>
     </ul>
     <button class="btn primary" id="closeRules" type="button">Back to the table</button>
   </div>
 </div>
 
+<div class="banner hidden" id="banner">Reconnecting…</div>
+
 <script>/*ENGINE*/</script>
-<script>
-(function () {
-  'use strict';
-  const S = window.Scala40;
-  const $ = (id) => document.getElementById(id);
-  let game = null;
-  let selected = new Set();
-  let revealedFor = null;
-  let lastDrawnId = null;
-  let message = { text: '', kind: '' };
-  let handOrder = {}; // player index -> array of card ids, in the order the player arranged them
-  let drag = null;
-
-  // ---------- setup ----------
-  let names = ['Player 1', 'Player 2', 'Player 3'];
-  function renderNameFields() {
-    const box = $('nameFields');
-    box.innerHTML = '';
-    names.forEach((n, i) => {
-      const label = document.createElement('label');
-      label.htmlFor = 'pname' + i;
-      label.textContent = 'Player ' + (i + 1);
-      const input = document.createElement('input');
-      input.id = 'pname' + i;
-      input.value = n;
-      input.maxLength = 16;
-      input.addEventListener('input', () => { names[i] = input.value; });
-      label.appendChild(input);
-      box.appendChild(label);
-    });
-    $('addPlayer').disabled = names.length >= 4;
-    $('removePlayer').disabled = names.length <= 2;
-  }
-  $('addPlayer').onclick = () => { if (names.length < 4) { names.push('Player ' + (names.length + 1)); renderNameFields(); } };
-  $('removePlayer').onclick = () => { if (names.length > 2) { names.pop(); renderNameFields(); } };
-  $('setupForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const clean = names.map((n, i) => (n || '').trim() || 'Player ' + (i + 1));
-    game = S.newGame(clean);
-    selected.clear(); revealedFor = null; lastDrawnId = null; handOrder = {};
-    say('');
-    $('setup').classList.add('hidden');
-    render();
-  });
-
-  // ---------- helpers ----------
-  function say(text, kind) { message = { text, kind: kind || '' }; }
-  function rankLabel(r) { return r === 1 ? 'A' : r === 11 ? 'J' : r === 12 ? 'Q' : r === 13 ? 'K' : String(r); }
-  function posLabel(p) { return rankLabel(p === 14 ? 1 : p); }
-
-  function cardEl(card, extra) {
-    const d = document.createElement('div');
-    d.className = 'card';
-    if (S.isJoker(card)) {
-      d.classList.add('joker');
-      d.innerHTML = '<span>★</span><span class="sub">' + (extra && extra.stands ? extra.stands : 'Joker') + '</span><span class="big">★</span>';
-    } else {
-      if (card.suit === 'H' || card.suit === 'D') d.classList.add('red');
-      const sym = S.SUIT_SYMBOL[card.suit];
-      d.innerHTML = '<span>' + rankLabel(card.rank) + sym + '</span><span class="big">' + sym + '</span>';
-    }
-    d.setAttribute('aria-label', S.cardLabel(card));
-    return d;
-  }
-
-  // ---------- hand order (each player arranges their own hand) ----------
-  function orderedHand(i) {
-    const hand = game.round.hands[i];
-    const byId = new Map(hand.map((c) => [c.id, c]));
-    let ord = (handOrder[i] || []).filter((id) => byId.has(id));
-    const known = new Set(ord);
-    const fresh = hand.filter((c) => !known.has(c.id));
-    if (!handOrder[i]) ord = S.sortHand(fresh).map((c) => c.id); // first deal: start sorted
-    else ord = ord.concat(fresh.map((c) => c.id));                // new cards go to the right
-    handOrder[i] = ord;
-    return ord.map((id) => byId.get(id));
-  }
-  function sortBy(mode) {
-    const me = game.round.turn;
-    const hand = game.round.hands[me].slice();
-    const suitOrder = { S: 0, H: 1, C: 2, D: 3 };
-    hand.sort((a, b) => {
-      if (S.isJoker(a) !== S.isJoker(b)) return S.isJoker(a) ? 1 : -1;
-      if (S.isJoker(a)) return a.id - b.id;
-      if (mode === 'rank') return a.rank - b.rank || suitOrder[a.suit] - suitOrder[b.suit];
-      return suitOrder[a.suit] - suitOrder[b.suit] || a.rank - b.rank;
-    });
-    handOrder[me] = hand.map((c) => c.id);
-    render();
-  }
-  function moveCard(id, beforeId) {
-    const me = game.round.turn;
-    const ord = handOrder[me].filter((x) => x !== id);
-    const at = beforeId == null ? ord.length : ord.indexOf(beforeId);
-    ord.splice(at < 0 ? ord.length : at, 0, id);
-    handOrder[me] = ord;
-  }
-
-  // ---------- rendering ----------
-  function render() {
-    if (!game) return;
-    const r = game.round;
-    const me = r.turn;
-    const hidden = revealedFor !== me && r.phase !== 'over';
-
-    $('round').textContent = 'Round ' + game.roundNumber + ' · dealer ' + game.players[game.dealer].name;
-    const pbox = $('players'); pbox.innerHTML = '';
-    game.players.forEach((p, i) => {
-      const chip = document.createElement('div');
-      chip.className = 'pchip' + (i === me && r.phase !== 'over' ? ' turn' : '') + (p.eliminated ? ' out' : '');
-      const opened = r.opened[i];
-      chip.innerHTML = '<span>' + escapeHtml(p.name) + '</span>' +
-        '<span class="score">' + p.score + '</span>' +
-        (p.eliminated ? '' : '<span class="badge' + (opened ? '' : ' no') + '">' + (opened ? 'open' : (r.hands[i].length + ' cards')) + '</span>');
-      pbox.appendChild(chip);
-    });
-
-    $('stockCount').textContent = r.stock.length + ' in stock';
-    const dt = $('discardTop'); dt.innerHTML = '';
-    if (r.discard.length) dt.appendChild(cardEl(r.discard[r.discard.length - 1]));
-    else { const e = document.createElement('div'); e.className = 'back'; e.style.opacity = '.2'; dt.appendChild(e); }
-    $('drawHint').textContent = r.phase === 'draw' && !hidden ? 'Draw a card' : '';
-    $('stockBtn').disabled = r.phase !== 'draw' || hidden;
-    $('discardBtn').disabled = r.phase !== 'draw' || hidden || !r.discard.length;
-
-    // combinations on the table
-    const mbox = $('melds'); mbox.innerHTML = '';
-    if (!r.melds.length) {
-      const e = document.createElement('div'); e.className = 'empty';
-      e.textContent = 'No combinations on the table yet. Open with sets and runs worth at least 40 points.';
-      mbox.appendChild(e);
-    }
-    const canTarget = r.phase === 'play' && selected.size > 0 && r.turnState && r.turnState.startOpened;
-    r.melds.forEach((m) => {
-      const box = document.createElement('div');
-      box.className = 'meld' + (canTarget ? ' target' : '');
-      box.tabIndex = canTarget ? 0 : -1;
-      const owner = document.createElement('div'); owner.className = 'owner';
-      owner.textContent = game.players[m.owner].name + ' · ' + (m.type === 'run' ? 'run' : 'set');
-      const row = document.createElement('div'); row.className = 'row';
-      m.entries.forEach((e) => {
-        let stands = null;
-        if (S.isJoker(e.card)) {
-          if (m.type === 'run') {
-            const suit = m.entries.find((x) => !S.isJoker(x.card)).card.suit;
-            stands = posLabel(e.pos) + S.SUIT_SYMBOL[suit];
-          } else {
-            stands = rankLabel(m.entries.find((x) => !S.isJoker(x.card)).card.rank) + '?';
-          }
-        }
-        row.appendChild(cardEl(e.card, { stands }));
-      });
-      box.appendChild(owner); box.appendChild(row);
-      if (canTarget) {
-        box.onclick = () => onMeldClick(m.id);
-        box.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onMeldClick(m.id); } };
-        box.setAttribute('role', 'button');
-        box.setAttribute('aria-label', 'Attach selected cards to ' + game.players[m.owner].name + "'s " + m.type);
-      }
-      mbox.appendChild(box);
-    });
-
-    // status
-    $('who').textContent = r.phase === 'over' ? 'Round over' : game.players[me].name + "'s turn";
-    const ts = r.turnState;
-    const prog = $('progress');
-    if (r.phase !== 'over' && !r.opened[me] && !hidden) {
-      const pts = ts ? ts.newMeldPoints : 0;
-      prog.textContent = 'Opening ' + pts + ' / ' + game.opts.openingPoints;
-      prog.className = 'progress' + (pts >= game.opts.openingPoints ? ' done' : '');
-    } else { prog.textContent = ''; prog.className = 'progress hidden'; }
-    const msg = $('msg'); msg.textContent = message.text; msg.className = 'msg ' + message.kind;
-
-    // hand
-    const hbox = $('hand'); hbox.innerHTML = '';
-    if (!hidden) {
-      orderedHand(me).forEach((c) => {
-        const el = cardEl(c);
-        el.tabIndex = 0;
-        el.dataset.id = c.id;
-        el.setAttribute('role', 'button');
-        el.setAttribute('aria-pressed', selected.has(c.id) ? 'true' : 'false');
-        el.title = 'Click to select. Drag to move. Shift + arrow keys also move it.';
-        if (selected.has(c.id)) el.classList.add('sel');
-        if (c.id === lastDrawnId && r.phase === 'play') el.classList.add('new');
-        el.addEventListener('pointerdown', (ev) => startDrag(ev, c.id, el));
-        el.onkeydown = (ev) => {
-          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(c.id); }
-          else if (ev.shiftKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
-            ev.preventDefault();
-            const ord = handOrder[me]; const i = ord.indexOf(c.id);
-            const j = ev.key === 'ArrowLeft' ? i - 1 : i + 1;
-            if (j < 0 || j >= ord.length) return;
-            ord.splice(i, 1); ord.splice(j, 0, c.id);
-            render();
-            const again = document.querySelector('#hand .card[data-id="' + c.id + '"]'); if (again) again.focus();
-          }
-        };
-        hbox.appendChild(el);
-      });
-    }
-    const playing = r.phase === 'play' && !hidden;
-    $('layBtn').disabled = !playing || selected.size < 3;
-    $('discardSelBtn').disabled = !playing || selected.size !== 1;
-    $('resetBtn').disabled = !playing;
-    $('clearBtn').disabled = !playing || selected.size === 0;
-    $('sortSuit').disabled = hidden || r.phase === 'over';
-    $('sortRank').disabled = hidden || r.phase === 'over';
-    const pv = $('preview');
-    if (!hidden && selected.size >= 3) {
-      const cards = r.hands[me].filter((c) => selected.has(c.id));
-      const v = S.validateMeld(cards);
-      pv.textContent = v.ok ? 'Valid ' + v.type + ' · ' + v.value + ' pts' : 'Not a set or run';
-      pv.className = 'preview ' + (v.ok ? 'good' : 'bad');
-    } else { pv.textContent = ''; pv.className = 'preview'; }
-
-    // overlays
-    $('handoff').classList.toggle('hidden', !hidden || !$('setup').classList.contains('hidden') || r.phase === 'over');
-    $('handoffTitle').textContent = game.players[me].name + ', your turn';
-    renderRoundOver();
-  }
-
-  function renderRoundOver() {
-    const r = game.round;
-    const box = $('roundOver');
-    if (r.phase !== 'over') { box.classList.add('hidden'); return; }
-    box.classList.remove('hidden');
-    const res = r.result;
-    const w = game.players[res.winner].name;
-    $('roundTitle').textContent = game.winner != null ? game.players[game.winner].name + ' wins the game!' : w + ' goes out';
-    $('roundText').textContent = res.doubled
-      ? w + ' went out in a single turn without having opened before, so penalties are doubled.'
-      : 'Penalties are the cards left in each hand (100 if never opened). 101 or more and you are out.';
-    const t = $('roundTable');
-    t.innerHTML = '<tr><th>Player</th><th class="num">This round</th><th class="num">Total</th><th></th></tr>';
-    game.players.forEach((p, i) => {
-      const tr = document.createElement('tr');
-      const status = p.eliminated ? (res.eliminated.includes(i) ? 'eliminated' : 'out') : (i === res.winner ? 'went out' : '');
-      tr.innerHTML = '<td>' + escapeHtml(p.name) + '</td><td class="num">' + (res.penalties[i] ? '+' + res.penalties[i] : '0') +
-        '</td><td class="num">' + p.score + '</td><td>' + status + '</td>';
-      t.appendChild(tr);
-    });
-    $('nextRoundBtn').textContent = game.winner != null ? 'New game' : 'Deal the next round';
-  }
-
-  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
-
-  // ---------- actions ----------
-  function toggle(id) {
-    if (selected.has(id)) selected.delete(id); else selected.add(id);
-    render();
-  }
-  function act(res, okText) {
-    if (res.ok) { say(okText || '', 'ok'); selected.clear(); }
-    else say(res.error, 'err');
-    render();
-    return res;
-  }
-
-  $('revealBtn').onclick = () => { revealedFor = game.round.turn; say(''); render(); };
-  $('stockBtn').onclick = () => {
-    const res = S.drawStock(game);
-    if (res.ok) lastDrawnId = res.card.id;
-    act(res, res.ok ? 'You drew ' + S.cardLabel(res.card) + '.' : '');
-  };
-  $('discardBtn').onclick = () => {
-    const res = S.takeDiscard(game);
-    if (res.ok) lastDrawnId = res.card.id;
-    act(res, res.ok ? 'You took ' + S.cardLabel(res.card) + '. Use it in a combination this turn.' : '');
-  };
-  $('layBtn').onclick = () => {
-    const res = S.layMeld(game, Array.from(selected));
-    act(res, res.ok ? 'Laid down a ' + res.meld.type + ' worth ' + res.value + ' points.' : '');
-  };
-  $('discardSelBtn').onclick = () => {
-    const id = Array.from(selected)[0];
-    const r = game.round;
-    const card = r.hands[r.turn].find((c) => c.id === id);
-    const res = S.discard(game, id);
-    if (res.ok) { lastDrawnId = null; say(res.wentOut ? '' : game.players[(game.round.turn)].name + ' is next.', 'ok'); selected.clear(); render(); }
-    else act(res);
-    void card;
-  };
-  $('resetBtn').onclick = () => act(S.resetTurn(game), 'Turn undone: you are back to just after your draw.');
-  $('clearBtn').onclick = () => { selected.clear(); render(); };
-
-  // Drag cards to rearrange the hand (mouse and touch). A tap without moving selects the card.
-  function startDrag(ev, id, el) {
-    if (ev.button !== undefined && ev.button !== 0) return;
-    drag = { id, el, x: ev.clientX, y: ev.clientY, moving: false, before: null };
-    el.setPointerCapture(ev.pointerId);
-    el.onpointermove = (e) => {
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      if (!drag.moving && Math.hypot(dx, dy) < 6) return;
-      drag.moving = true;
-      el.classList.add('dragging');
-      el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      document.querySelectorAll('#hand .card.drop-before').forEach((n) => n.classList.remove('drop-before'));
-      drag.before = null;
-      for (const other of document.querySelectorAll('#hand .card')) {
-        if (other === el) continue;
-        const rc = other.getBoundingClientRect();
-        if (e.clientY < rc.top || (e.clientY <= rc.bottom && e.clientX < rc.left + rc.width / 2)) {
-          drag.before = Number(other.dataset.id); other.classList.add('drop-before'); break;
-        }
-      }
-    };
-    el.onpointerup = el.onpointercancel = () => {
-      el.onpointermove = el.onpointerup = el.onpointercancel = null;
+<script>/*CLIENT*/</script>
+l = null;
       const d = drag; drag = null;
       if (!d) return;
       if (d.moving) { moveCard(d.id, d.before); render(); }

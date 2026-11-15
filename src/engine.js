@@ -272,6 +272,7 @@
     beginTurnState(g);
     r.phase = 'play';
     r.snapshot = clone(r);
+    g.log.push(`${g.players[r.turn].name} draws from the stock.`);
     return { ok: true, card: c };
   }
 
@@ -285,6 +286,7 @@
     r.turnState.tookDiscardId = c.id;
     r.phase = 'play';
     r.snapshot = clone(r);
+    g.log.push(`${g.players[r.turn].name} takes ${cardLabel(c)} from the discard pile.`);
     return { ok: true, card: c };
   }
 
@@ -295,6 +297,7 @@
     const snap = clone(r.snapshot);
     g.round = snap;
     g.round.snapshot = clone(snap);
+    g.log.push(`${g.players[snap.turn].name} undoes their turn.`);
     return { ok: true };
   }
 
@@ -326,6 +329,7 @@
     ts.newMeldIds.push(meld.id);
     ts.newMeldPoints += v.value;
     useJokers(ts, cards);
+    g.log.push(`${g.players[r.turn].name} lays down a ${v.type}: ${meldCards(meld).map(cardLabel).join(' ')}.`);
     return { ok: true, meld, value: v.value };
   }
 
@@ -352,6 +356,7 @@
     meld.entries = v.entries;
     removeFromHand(hand, cardIds);
     useJokers(ts, cards);
+    g.log.push(`${g.players[r.turn].name} attaches ${cards.map(cardLabel).join(' ')} to ${g.players[meld.owner].name}'s ${meld.type}.`);
     return { ok: true, meld };
   }
 
@@ -367,6 +372,7 @@
     hand.splice(hand.findIndex((c) => c.id === cardId), 1);
     hand.push(jokerCard);
     r.turnState.jokersToUse.push(jokerCard.id);
+    g.log.push(`${g.players[r.turn].name} swaps a joker off the table.`);
     return { ok: true, joker: jokerCard };
   }
 
@@ -416,6 +422,7 @@
     }
     hand.splice(hand.indexOf(card), 1);
     r.discard.push(card);
+    g.log.push(`${g.players[r.turn].name} discards ${cardLabel(card)}.`);
     r.snapshot = null;
     if (hand.length === 0) {
       endRound(g, r.turn, !ts.startOpened);
@@ -473,13 +480,36 @@
     });
   }
 
+  // What one player is allowed to see: their own hand, everyone's counts, the table.
+  function viewFor(g, seat) {
+    const r = g.round;
+    const ts = r.turnState;
+    return clone({
+      roundNumber: g.roundNumber,
+      dealer: g.dealer,
+      turn: r.turn,
+      phase: r.phase,
+      me: seat,
+      players: g.players.map((p, i) => ({ name: p.name, score: p.score, eliminated: p.eliminated, opened: r.opened[i], cards: r.hands[i].length })),
+      hand: r.hands[seat] || [],
+      melds: r.melds,
+      discardTop: r.discard.length ? r.discard[r.discard.length - 1] : null,
+      stockCount: r.stock.length,
+      turnState: seat === r.turn && ts ? { startOpened: ts.startOpened, newMeldPoints: ts.newMeldPoints, tookDiscardId: ts.tookDiscardId, jokersToUse: ts.jokersToUse } : null,
+      result: r.result,
+      winner: g.winner,
+      openingPoints: g.opts.openingPoints,
+      log: g.log.slice(-8),
+    });
+  }
+
   const api = {
     SUITS, SUIT_SYMBOL, DEFAULT_OPTIONS,
     makeDeck, shuffle, isJoker, cardLabel, penaltyValue,
     validateMeld,
     newGame, nextRound, drawStock, takeDiscard, resetTurn,
     layMeld, attach, swapJoker: swapJokerSafe, discard: discardCard,
-    sortHand, activeIndexes,
+    sortHand, activeIndexes, viewFor,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
