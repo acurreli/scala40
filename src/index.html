@@ -86,7 +86,13 @@ h1, h2 { font-family: var(--display); font-weight: 400; text-wrap: balance; marg
 .progress { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--felt-line); font-variant-numeric: tabular-nums; }
 .progress.done { border-color: var(--gold); color: var(--gold); }
 .hand { display: flex; flex-wrap: wrap; gap: 6px; min-height: 96px; padding-top: 14px; }
-.hand .card { cursor: pointer; transition: transform .12s ease; }
+.hand .card { cursor: grab; transition: transform .12s ease; touch-action: none; }
+.hand .card.dragging { transition: none; z-index: 5; cursor: grabbing; opacity: .9; }
+.hand .card.drop-before { box-shadow: -5px 0 0 0 var(--gold), 0 2px 5px rgba(0,0,0,.3); }
+.preview { font-size: 13px; padding: 2px 8px; border-radius: 999px; }
+.preview.good { background: rgba(185,240,198,.15); color: #b9f0c6; }
+.preview.bad { color: var(--muted); }
+.handtools { display: flex; gap: 6px; margin-left: auto; }
 .hand .card.sel { transform: translateY(-12px); box-shadow: 0 0 0 3px var(--gold), 0 6px 12px rgba(0,0,0,.4); }
 .hand .card.new::after { content: "new"; position: absolute; top: -9px; left: 4px; font-size: 10px; background: var(--gold); color: #2a2205; padding: 0 5px; border-radius: 6px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -145,7 +151,9 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <div class="status">
       <span class="who" id="who"></span>
       <span class="progress" id="progress"></span>
+      <span class="preview" id="preview"></span>
       <span class="msg" id="msg"></span>
+      <span class="handtools"><button class="ghost" id="sortSuit" type="button">Sort by suit</button><button class="ghost" id="sortRank" type="button">Sort by rank</button></span>
     </div>
     <div class="hand" id="hand"></div>
     <div class="actions">
@@ -218,6 +226,8 @@ table.scores td.num, table.scores th.num { text-align: right; }
   let revealedFor = null;
   let lastDrawnId = null;
   let message = { text: '', kind: '' };
+  let handOrder = {}; // player index -> array of card ids, in the order the player arranged them
+  let drag = null;
 
   // ---------- setup ----------
   let names = ['Player 1', 'Player 2', 'Player 3'];
@@ -245,7 +255,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     e.preventDefault();
     const clean = names.map((n, i) => (n || '').trim() || 'Player ' + (i + 1));
     game = S.newGame(clean);
-    selected.clear(); revealedFor = null; lastDrawnId = null;
+    selected.clear(); revealedFor = null; lastDrawnId = null; handOrder = {};
     say('');
     $('setup').classList.add('hidden');
     render();
@@ -269,6 +279,39 @@ table.scores td.num, table.scores th.num { text-align: right; }
     }
     d.setAttribute('aria-label', S.cardLabel(card));
     return d;
+  }
+
+  // ---------- hand order (each player arranges their own hand) ----------
+  function orderedHand(i) {
+    const hand = game.round.hands[i];
+    const byId = new Map(hand.map((c) => [c.id, c]));
+    let ord = (handOrder[i] || []).filter((id) => byId.has(id));
+    const known = new Set(ord);
+    const fresh = hand.filter((c) => !known.has(c.id));
+    if (!handOrder[i]) ord = S.sortHand(fresh).map((c) => c.id); // first deal: start sorted
+    else ord = ord.concat(fresh.map((c) => c.id));                // new cards go to the right
+    handOrder[i] = ord;
+    return ord.map((id) => byId.get(id));
+  }
+  function sortBy(mode) {
+    const me = game.round.turn;
+    const hand = game.round.hands[me].slice();
+    const suitOrder = { S: 0, H: 1, C: 2, D: 3 };
+    hand.sort((a, b) => {
+      if (S.isJoker(a) !== S.isJoker(b)) return S.isJoker(a) ? 1 : -1;
+      if (S.isJoker(a)) return a.id - b.id;
+      if (mode === 'rank') return a.rank - b.rank || suitOrder[a.suit] - suitOrder[b.suit];
+      return suitOrder[a.suit] - suitOrder[b.suit] || a.rank - b.rank;
+    });
+    handOrder[me] = hand.map((c) => c.id);
+    render();
+  }
+  function moveCard(id, beforeId) {
+    const me = game.round.turn;
+    const ord = handOrder[me].filter((x) => x !== id);
+    const at = beforeId == null ? ord.length : ord.indexOf(beforeId);
+    ord.splice(at < 0 ? ord.length : at, 0, id);
+    handOrder[me] = ord;
   }
 
   // ---------- rendering ----------
@@ -349,15 +392,28 @@ table.scores td.num, table.scores th.num { text-align: right; }
     // hand
     const hbox = $('hand'); hbox.innerHTML = '';
     if (!hidden) {
-      S.sortHand(r.hands[me]).forEach((c) => {
+      orderedHand(me).forEach((c) => {
         const el = cardEl(c);
         el.tabIndex = 0;
+        el.dataset.id = c.id;
         el.setAttribute('role', 'button');
         el.setAttribute('aria-pressed', selected.has(c.id) ? 'true' : 'false');
+        el.title = 'Click to select. Drag to move. Shift + arrow keys also move it.';
         if (selected.has(c.id)) el.classList.add('sel');
         if (c.id === lastDrawnId && r.phase === 'play') el.classList.add('new');
-        el.onclick = () => toggle(c.id);
-        el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(c.id); } };
+        el.addEventListener('pointerdown', (ev) => startDrag(ev, c.id, el));
+        el.onkeydown = (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(c.id); }
+          else if (ev.shiftKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+            ev.preventDefault();
+            const ord = handOrder[me]; const i = ord.indexOf(c.id);
+            const j = ev.key === 'ArrowLeft' ? i - 1 : i + 1;
+            if (j < 0 || j >= ord.length) return;
+            ord.splice(i, 1); ord.splice(j, 0, c.id);
+            render();
+            const again = document.querySelector('#hand .card[data-id="' + c.id + '"]'); if (again) again.focus();
+          }
+        };
         hbox.appendChild(el);
       });
     }
@@ -366,6 +422,15 @@ table.scores td.num, table.scores th.num { text-align: right; }
     $('discardSelBtn').disabled = !playing || selected.size !== 1;
     $('resetBtn').disabled = !playing;
     $('clearBtn').disabled = !playing || selected.size === 0;
+    $('sortSuit').disabled = hidden || r.phase === 'over';
+    $('sortRank').disabled = hidden || r.phase === 'over';
+    const pv = $('preview');
+    if (!hidden && selected.size >= 3) {
+      const cards = r.hands[me].filter((c) => selected.has(c.id));
+      const v = S.validateMeld(cards);
+      pv.textContent = v.ok ? 'Valid ' + v.type + ' · ' + v.value + ' pts' : 'Not a set or run';
+      pv.className = 'preview ' + (v.ok ? 'good' : 'bad');
+    } else { pv.textContent = ''; pv.className = 'preview'; }
 
     // overlays
     $('handoff').classList.toggle('hidden', !hidden || !$('setup').classList.contains('hidden') || r.phase === 'over');
@@ -437,6 +502,38 @@ table.scores td.num, table.scores th.num { text-align: right; }
   $('resetBtn').onclick = () => act(S.resetTurn(game), 'Turn undone: you are back to just after your draw.');
   $('clearBtn').onclick = () => { selected.clear(); render(); };
 
+  // Drag cards to rearrange the hand (mouse and touch). A tap without moving selects the card.
+  function startDrag(ev, id, el) {
+    if (ev.button !== undefined && ev.button !== 0) return;
+    drag = { id, el, x: ev.clientX, y: ev.clientY, moving: false, before: null };
+    el.setPointerCapture(ev.pointerId);
+    el.onpointermove = (e) => {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moving && Math.hypot(dx, dy) < 6) return;
+      drag.moving = true;
+      el.classList.add('dragging');
+      el.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      document.querySelectorAll('#hand .card.drop-before').forEach((n) => n.classList.remove('drop-before'));
+      drag.before = null;
+      for (const other of document.querySelectorAll('#hand .card')) {
+        if (other === el) continue;
+        const rc = other.getBoundingClientRect();
+        if (e.clientY < rc.top || (e.clientY <= rc.bottom && e.clientX < rc.left + rc.width / 2)) {
+          drag.before = Number(other.dataset.id); other.classList.add('drop-before'); break;
+        }
+      }
+    };
+    el.onpointerup = el.onpointercancel = () => {
+      el.onpointermove = el.onpointerup = el.onpointercancel = null;
+      const d = drag; drag = null;
+      if (!d) return;
+      if (d.moving) { moveCard(d.id, d.before); render(); }
+      else toggle(d.id);
+    };
+  }
+  $('sortSuit').onclick = () => sortBy('suit');
+  $('sortRank').onclick = () => sortBy('rank');
+
   function onMeldClick(meldId) {
     const ids = Array.from(selected);
     const meld = game.round.melds.find((m) => m.id === meldId);
@@ -451,7 +548,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
   $('nextRoundBtn').onclick = () => {
     if (game.winner != null) { game = null; $('roundOver').classList.add('hidden'); $('setup').classList.remove('hidden'); renderNameFields(); return; }
     S.nextRound(game);
-    revealedFor = null; selected.clear(); lastDrawnId = null; say('');
+    revealedFor = null; selected.clear(); lastDrawnId = null; handOrder = {}; say('');
     render();
   };
   $('rulesBtn').onclick = () => $('rules').classList.remove('hidden');
