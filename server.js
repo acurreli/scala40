@@ -68,6 +68,7 @@ function joinSeat(ws, t, seatIdx) {
   ws.table = t;
   ws.seat = seatIdx;
   send(ws, { type: 'joined', code: t.code, machine: MACHINE, token: seat.token, seat: seatIdx });
+  send(ws, { type: 'chatHistory', messages: t.chat });
   broadcast(t);
 }
 
@@ -86,7 +87,7 @@ function handle(ws, msg) {
 
   if (msg.type === 'create') {
     if (!name) return send(ws, { type: 'error', error: 'Type your name first.' });
-    const t = { code: newCode(), seats: [{ name, token: newToken(), ws: null }], game: null, touched: Date.now() };
+    const t = { code: newCode(), seats: [{ name, token: newToken(), ws: null }], game: null, chat: [], touched: Date.now() };
     tables.set(t.code, t);
     return joinSeat(ws, t, 0);
   }
@@ -106,6 +107,20 @@ function handle(ws, msg) {
   const t = ws.table;
   if (!t) return send(ws, { type: 'error', error: 'You are not at a table.' });
   const me = ws.seat;
+
+  if (msg.type === 'chat') {
+    const text = String(msg.text || '').trim().slice(0, 200);
+    if (!text) return;
+    const now = Date.now();
+    if (ws.lastChat && now - ws.lastChat < 400) return; // simple flood guard
+    ws.lastChat = now;
+    const entry = { from: t.seats[me].name, seat: me, text, at: now };
+    t.chat.push(entry);
+    if (t.chat.length > 100) t.chat.shift();
+    t.touched = now;
+    t.seats.forEach((s) => send(s.ws, { type: 'chat', message: entry }));
+    return;
+  }
 
   if (msg.type === 'start') {
     if (me !== 0) return send(ws, { type: 'error', error: 'Only the player who created the table can deal.' });

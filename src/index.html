@@ -129,7 +129,22 @@ table.scores td.num, table.scores th.num { text-align: right; }
 .banner { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); background: #7a1d17; color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; z-index: 20; }
 .tablecode { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
 
+.table.withchat { grid-template-columns: 150px 1fr 260px; }
+.chat { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border-radius: 12px; background: rgba(0,0,0,.18); border: 1px solid var(--felt-line); }
+.chat h3 { font-family: var(--display); font-weight: 400; font-size: 18px; margin: 0; }
+.chatlog { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.chatlog .from { font-weight: 600; color: var(--gold); margin-right: 4px; }
+.chatlog .empty { color: var(--muted); }
+.chatform { display: flex; gap: 6px; }
+.chatform input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--felt-line); background: rgba(0,0,0,.25); color: var(--text); }
+.chatform .btn { padding: 7px 10px; }
+.linkbtn { background: none; border: none; padding: 0; color: var(--gold); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; align-self: flex-start; }
+.status .linkbtn { margin-left: auto; }
+.status .linkbtn + .handtools { margin-left: 0; }
+.flying { position: fixed; z-index: 30; pointer-events: none; margin: 0; }
+@media (max-width: 900px) { .table.withchat { grid-template-columns: 150px 1fr; } .table.withchat .chat { grid-column: 1 / -1; max-height: 220px; } }
 @media (max-width: 640px) {
+  .table.withchat { grid-template-columns: 1fr; }
   .log { max-width: none; }
   .table { grid-template-columns: 1fr; }
   .piles { flex-direction: row; justify-content: center; }
@@ -162,6 +177,14 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <ul class="log" id="log" aria-live="polite"></ul>
     </div>
     <div class="melds" id="melds"></div>
+    <aside class="chat hidden" id="chat" aria-label="Table chat">
+      <h3>Chat</h3>
+      <ul class="chatlog" id="chatLog" aria-live="polite"></ul>
+      <form class="chatform" id="chatForm">
+        <input id="chatInput" maxlength="200" autocomplete="off" placeholder="Say something…" aria-label="Chat message">
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </aside>
   </div>
 
   <div class="dock">
@@ -170,6 +193,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <span class="progress" id="progress"></span>
       <span class="preview" id="preview"></span>
       <span class="msg" id="msg"></span>
+      <button class="linkbtn" id="rulesLink" type="button">Click here for rules</button>
       <span class="handtools"><button class="ghost" id="sortSuit" type="button">Sort by suit</button><button class="ghost" id="sortRank" type="button">Sort by rank</button></span>
     </div>
     <div class="hand" id="hand"></div>
@@ -198,6 +222,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <p>Everyone shares this one screen and takes turns.</p>
       <button class="btn" id="localBtn" type="button">Set up players</button>
     </div>
+    <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
   </div>
 </div>
 
@@ -240,6 +265,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <ul class="seats" id="seatList"></ul>
     <button class="btn primary" id="startBtn" type="button">Deal the cards</button>
     <p id="lobbyNote"></p>
+    <button class="linkbtn" id="lobbyRules" type="button">Click here for the rules</button>
     <div class="err" id="lobbyErr"></div>
   </div>
 </div>
@@ -285,38 +311,5 @@ table.scores td.num, table.scores th.num { text-align: right; }
 
 <script>/*ENGINE*/</script>
 <script>/*CLIENT*/</script>
-l = null;
-      const d = drag; drag = null;
-      if (!d) return;
-      if (d.moving) { moveCard(d.id, d.before); render(); }
-      else toggle(d.id);
-    };
-  }
-  $('sortSuit').onclick = () => sortBy('suit');
-  $('sortRank').onclick = () => sortBy('rank');
-
-  function onMeldClick(meldId) {
-    const ids = Array.from(selected);
-    const meld = game.round.melds.find((m) => m.id === meldId);
-    const hasJoker = meld && meld.entries.some((e) => S.isJoker(e.card));
-    if (ids.length === 1 && hasJoker) {
-      const sw = S.swapJoker(game, meldId, ids[0]);
-      if (sw.ok) return act(sw, 'You took the joker. Use it in a combination this turn.');
-    }
-    act(S.attach(game, meldId, ids), 'Attached.');
-  }
-
-  $('nextRoundBtn').onclick = () => {
-    if (game.winner != null) { game = null; $('roundOver').classList.add('hidden'); $('setup').classList.remove('hidden'); renderNameFields(); return; }
-    S.nextRound(game);
-    revealedFor = null; selected.clear(); lastDrawnId = null; handOrder = {}; say('');
-    render();
-  };
-  $('rulesBtn').onclick = () => $('rules').classList.remove('hidden');
-  $('closeRules').onclick = () => $('rules').classList.add('hidden');
-
-  renderNameFields();
-})();
-</script>
 </body>
 </html>

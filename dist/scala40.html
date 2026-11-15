@@ -129,7 +129,22 @@ table.scores td.num, table.scores th.num { text-align: right; }
 .banner { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); background: #7a1d17; color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 13px; z-index: 20; }
 .tablecode { font-variant-numeric: tabular-nums; letter-spacing: .08em; }
 
+.table.withchat { grid-template-columns: 150px 1fr 260px; }
+.chat { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px; border-radius: 12px; background: rgba(0,0,0,.18); border: 1px solid var(--felt-line); }
+.chat h3 { font-family: var(--display); font-weight: 400; font-size: 18px; margin: 0; }
+.chatlog { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.chatlog .from { font-weight: 600; color: var(--gold); margin-right: 4px; }
+.chatlog .empty { color: var(--muted); }
+.chatform { display: flex; gap: 6px; }
+.chatform input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--felt-line); background: rgba(0,0,0,.25); color: var(--text); }
+.chatform .btn { padding: 7px 10px; }
+.linkbtn { background: none; border: none; padding: 0; color: var(--gold); text-decoration: underline; text-underline-offset: 3px; font-size: 13px; align-self: flex-start; }
+.status .linkbtn { margin-left: auto; }
+.status .linkbtn + .handtools { margin-left: 0; }
+.flying { position: fixed; z-index: 30; pointer-events: none; margin: 0; }
+@media (max-width: 900px) { .table.withchat { grid-template-columns: 150px 1fr; } .table.withchat .chat { grid-column: 1 / -1; max-height: 220px; } }
 @media (max-width: 640px) {
+  .table.withchat { grid-template-columns: 1fr; }
   .log { max-width: none; }
   .table { grid-template-columns: 1fr; }
   .piles { flex-direction: row; justify-content: center; }
@@ -162,6 +177,14 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <ul class="log" id="log" aria-live="polite"></ul>
     </div>
     <div class="melds" id="melds"></div>
+    <aside class="chat hidden" id="chat" aria-label="Table chat">
+      <h3>Chat</h3>
+      <ul class="chatlog" id="chatLog" aria-live="polite"></ul>
+      <form class="chatform" id="chatForm">
+        <input id="chatInput" maxlength="200" autocomplete="off" placeholder="Say something…" aria-label="Chat message">
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </aside>
   </div>
 
   <div class="dock">
@@ -170,6 +193,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <span class="progress" id="progress"></span>
       <span class="preview" id="preview"></span>
       <span class="msg" id="msg"></span>
+      <button class="linkbtn" id="rulesLink" type="button">Click here for rules</button>
       <span class="handtools"><button class="ghost" id="sortSuit" type="button">Sort by suit</button><button class="ghost" id="sortRank" type="button">Sort by rank</button></span>
     </div>
     <div class="hand" id="hand"></div>
@@ -198,6 +222,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <p>Everyone shares this one screen and takes turns.</p>
       <button class="btn" id="localBtn" type="button">Set up players</button>
     </div>
+    <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
   </div>
 </div>
 
@@ -240,6 +265,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <ul class="seats" id="seatList"></ul>
     <button class="btn primary" id="startBtn" type="button">Deal the cards</button>
     <p id="lobbyNote"></p>
+    <button class="linkbtn" id="lobbyRules" type="button">Click here for the rules</button>
     <div class="err" id="lobbyErr"></div>
   </div>
 </div>
@@ -819,6 +845,8 @@ table.scores td.num, table.scores th.num { text-align: right; }
   let message = { text: '', kind: '' };
   let handOrder = {};
   let drag = null;
+  let chat = [];
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- small helpers ----------
   const store = {
@@ -927,9 +955,17 @@ table.scores td.num, table.scores th.num { text-align: right; }
       if (view && before && (before.roundNumber !== view.roundNumber)) { selected.clear(); lastDrawnId = null; }
       if (view && view.turn !== view.me) selected.clear();
       render();
+      runPendingFly();
+      if (before && view && before.roundNumber === view.roundNumber && before.turn === view.turn &&
+          before.phase === 'draw' && view.phase === 'play' && view.turn !== view.me) {
+        const fromDiscard = !!before.discardTop && (!view.discardTop || view.discardTop.id !== before.discardTop.id);
+        flyCard(fromDiscard ? $('discardTop') : $('stockBtn'), document.querySelector('.pchip[data-seat="' + view.turn + '"]'), fromDiscard ? before.discardTop : null);
+      }
       return;
     }
     if (msg.type === 'done') { afterAction(msg.info.action, msg.info); return; }
+    if (msg.type === 'chatHistory') { chat = msg.messages || []; renderChat(); return; }
+    if (msg.type === 'chat') { chat.push(msg.message); if (chat.length > 100) chat.shift(); renderChat(true); return; }
     if (msg.type === 'error') {
       if (!online.joined || msg.fatal) {
         online.joined = false;
@@ -995,13 +1031,73 @@ table.scores td.num, table.scores th.num { text-align: right; }
     if (action === 'draw' || action === 'take') {
       lastDrawnId = info.cardId;
       say(action === 'take' ? 'Use the card you took in a combination this turn.' : '', 'ok');
+      pendingFly = { from: action === 'take' ? 'discard' : 'stock', id: info.cardId };
     } else if (action === 'lay') say('Laid down, worth ' + info.value + ' points.', 'ok');
     else if (action === 'attach') say('Attached.', 'ok');
     else if (action === 'swap') say('You took the joker. Use it in a combination this turn.', 'ok');
     else if (action === 'reset') say('Turn undone: you are back to just after your draw.', 'ok');
     else if (action === 'discard') { lastDrawnId = null; say(''); }
     render();
+    runPendingFly();
   }
+
+  // ---------- card animation: from the deck (or discard pile) to the hand ----------
+  let pendingFly = null;
+  function runPendingFly() {
+    if (!pendingFly) return;
+    const f = pendingFly;
+    // Online, the new card arrives with the next state update; wait until it is in the hand.
+    const target = document.querySelector('#hand .card[data-id="' + f.id + '"]');
+    if (!target) { if (mode !== 'online') pendingFly = null; return; }
+    pendingFly = null;
+    const card = view.hand.find((c) => c.id === f.id);
+    flyCard(f.from === 'discard' ? $('discardTop') : $('stockBtn'), target, card, true);
+  }
+  function flyCard(fromEl, toEl, card, faceUpAtEnd) {
+    if (reduceMotion || !fromEl || !toEl || !fromEl.animate) return;
+    const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+    if (!a.width || !b.width) return;
+    let ghost;
+    if (card && (faceUpAtEnd || card)) ghost = cardEl(card);
+    else { ghost = document.createElement('div'); ghost.className = 'back'; }
+    ghost.classList.add('flying');
+    const w = 64, h = 92;
+    ghost.style.width = w + 'px'; ghost.style.height = h + 'px';
+    ghost.style.left = (a.left + a.width / 2 - w / 2) + 'px';
+    ghost.style.top = (a.top + a.height / 2 - h / 2) + 'px';
+    document.body.appendChild(ghost);
+    const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+    const dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+    const scale = toEl.classList.contains('card') ? b.width / w : 0.45;
+    if (toEl.classList.contains('card')) toEl.style.visibility = 'hidden';
+    const anim = ghost.animate([
+      { transform: 'translate(0,0) scale(1) rotate(0deg)' },
+      { transform: 'translate(' + dx * 0.55 + 'px,' + (dy * 0.55 - 40) + 'px) scale(1.08) rotate(-6deg)', offset: 0.55 },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ') rotate(0deg)', opacity: toEl.classList.contains('card') ? 1 : 0.2 },
+    ], { duration: 520, easing: 'cubic-bezier(.3,.7,.3,1)' });
+    anim.onfinish = anim.oncancel = () => { ghost.remove(); toEl.style.visibility = ''; };
+  }
+
+  // ---------- chat (online tables) ----------
+  function renderChat(scroll) {
+    const list = $('chatLog');
+    list.innerHTML = '';
+    if (!chat.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No messages yet. Say hello!'; list.appendChild(li); }
+    chat.forEach((m) => {
+      const li = document.createElement('li');
+      const who = document.createElement('span'); who.className = 'from'; who.textContent = m.from + ':';
+      li.appendChild(who); li.appendChild(document.createTextNode(' ' + m.text));
+      list.appendChild(li);
+    });
+    if (scroll !== false) list.scrollTop = list.scrollHeight;
+  }
+  $('chatForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = $('chatInput').value.trim();
+    if (!text) return;
+    send({ type: 'chat', text });
+    $('chatInput').value = '';
+  });
 
   $('stockBtn').onclick = () => act('draw');
   $('discardBtn').onclick = () => act('take');
@@ -1035,7 +1131,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     if (view.winner != null) { localGame = null; view = null; show('roundOver', false); show('setup', true); renderNameFields(); return; }
     S.nextRound(localGame); resetUi(); refreshLocal();
   };
-  $('rulesBtn').onclick = () => show('rules', true);
+  $('rulesBtn').onclick = $('rulesLink').onclick = $('homeRules').onclick = $('lobbyRules').onclick = () => show('rules', true);
   $('closeRules').onclick = () => show('rules', false);
 
   // ---------- each player arranges their own hand ----------
@@ -1125,6 +1221,9 @@ table.scores td.num, table.scores th.num { text-align: right; }
     if (!view) return;
     const local = mode === 'local';
     const me = view.me;
+    const withChat = mode === 'online';
+    show('chat', withChat);
+    document.querySelector('.table').classList.toggle('withchat', withChat);
     const myTurn = view.turn === me;
     const over = view.phase === 'over';
     const hidden = local && revealedFor !== view.turn && !over;
@@ -1135,6 +1234,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     view.players.forEach((p, i) => {
       const chip = document.createElement('div');
       chip.className = 'pchip' + (i === view.turn && !over ? ' turn' : '') + (p.eliminated ? ' out' : '');
+      chip.dataset.seat = i;
       const conn = mode === 'online' && lobby && lobby.seats[i] ? '<span class="dot' + (lobby.seats[i].connected ? '' : ' off') + '" title="' + (lobby.seats[i].connected ? 'online' : 'offline') + '"></span>' : '';
       chip.innerHTML = conn + '<span>' + esc(p.name) + (mode === 'online' && i === me ? ' (you)' : '') + '</span>' +
         '<span class="score">' + p.score + '</span>' +
@@ -1271,39 +1371,6 @@ table.scores td.num, table.scores th.num { text-align: right; }
   }
 
   bootFromUrl();
-})();
-</script>
-l = null;
-      const d = drag; drag = null;
-      if (!d) return;
-      if (d.moving) { moveCard(d.id, d.before); render(); }
-      else toggle(d.id);
-    };
-  }
-  $('sortSuit').onclick = () => sortBy('suit');
-  $('sortRank').onclick = () => sortBy('rank');
-
-  function onMeldClick(meldId) {
-    const ids = Array.from(selected);
-    const meld = game.round.melds.find((m) => m.id === meldId);
-    const hasJoker = meld && meld.entries.some((e) => S.isJoker(e.card));
-    if (ids.length === 1 && hasJoker) {
-      const sw = S.swapJoker(game, meldId, ids[0]);
-      if (sw.ok) return act(sw, 'You took the joker. Use it in a combination this turn.');
-    }
-    act(S.attach(game, meldId, ids), 'Attached.');
-  }
-
-  $('nextRoundBtn').onclick = () => {
-    if (game.winner != null) { game = null; $('roundOver').classList.add('hidden'); $('setup').classList.remove('hidden'); renderNameFields(); return; }
-    S.nextRound(game);
-    revealedFor = null; selected.clear(); lastDrawnId = null; handOrder = {}; say('');
-    render();
-  };
-  $('rulesBtn').onclick = () => $('rules').classList.remove('hidden');
-  $('closeRules').onclick = () => $('rules').classList.add('hidden');
-
-  renderNameFields();
 })();
 </script>
 </body>

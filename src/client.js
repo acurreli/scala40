@@ -16,6 +16,8 @@
   let message = { text: '', kind: '' };
   let handOrder = {};
   let drag = null;
+  let chat = [];
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- small helpers ----------
   const store = {
@@ -124,9 +126,17 @@
       if (view && before && (before.roundNumber !== view.roundNumber)) { selected.clear(); lastDrawnId = null; }
       if (view && view.turn !== view.me) selected.clear();
       render();
+      runPendingFly();
+      if (before && view && before.roundNumber === view.roundNumber && before.turn === view.turn &&
+          before.phase === 'draw' && view.phase === 'play' && view.turn !== view.me) {
+        const fromDiscard = !!before.discardTop && (!view.discardTop || view.discardTop.id !== before.discardTop.id);
+        flyCard(fromDiscard ? $('discardTop') : $('stockBtn'), document.querySelector('.pchip[data-seat="' + view.turn + '"]'), fromDiscard ? before.discardTop : null);
+      }
       return;
     }
     if (msg.type === 'done') { afterAction(msg.info.action, msg.info); return; }
+    if (msg.type === 'chatHistory') { chat = msg.messages || []; renderChat(); return; }
+    if (msg.type === 'chat') { chat.push(msg.message); if (chat.length > 100) chat.shift(); renderChat(true); return; }
     if (msg.type === 'error') {
       if (!online.joined || msg.fatal) {
         online.joined = false;
@@ -192,13 +202,73 @@
     if (action === 'draw' || action === 'take') {
       lastDrawnId = info.cardId;
       say(action === 'take' ? 'Use the card you took in a combination this turn.' : '', 'ok');
+      pendingFly = { from: action === 'take' ? 'discard' : 'stock', id: info.cardId };
     } else if (action === 'lay') say('Laid down, worth ' + info.value + ' points.', 'ok');
     else if (action === 'attach') say('Attached.', 'ok');
     else if (action === 'swap') say('You took the joker. Use it in a combination this turn.', 'ok');
     else if (action === 'reset') say('Turn undone: you are back to just after your draw.', 'ok');
     else if (action === 'discard') { lastDrawnId = null; say(''); }
     render();
+    runPendingFly();
   }
+
+  // ---------- card animation: from the deck (or discard pile) to the hand ----------
+  let pendingFly = null;
+  function runPendingFly() {
+    if (!pendingFly) return;
+    const f = pendingFly;
+    // Online, the new card arrives with the next state update; wait until it is in the hand.
+    const target = document.querySelector('#hand .card[data-id="' + f.id + '"]');
+    if (!target) { if (mode !== 'online') pendingFly = null; return; }
+    pendingFly = null;
+    const card = view.hand.find((c) => c.id === f.id);
+    flyCard(f.from === 'discard' ? $('discardTop') : $('stockBtn'), target, card, true);
+  }
+  function flyCard(fromEl, toEl, card, faceUpAtEnd) {
+    if (reduceMotion || !fromEl || !toEl || !fromEl.animate) return;
+    const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+    if (!a.width || !b.width) return;
+    let ghost;
+    if (card && (faceUpAtEnd || card)) ghost = cardEl(card);
+    else { ghost = document.createElement('div'); ghost.className = 'back'; }
+    ghost.classList.add('flying');
+    const w = 64, h = 92;
+    ghost.style.width = w + 'px'; ghost.style.height = h + 'px';
+    ghost.style.left = (a.left + a.width / 2 - w / 2) + 'px';
+    ghost.style.top = (a.top + a.height / 2 - h / 2) + 'px';
+    document.body.appendChild(ghost);
+    const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+    const dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+    const scale = toEl.classList.contains('card') ? b.width / w : 0.45;
+    if (toEl.classList.contains('card')) toEl.style.visibility = 'hidden';
+    const anim = ghost.animate([
+      { transform: 'translate(0,0) scale(1) rotate(0deg)' },
+      { transform: 'translate(' + dx * 0.55 + 'px,' + (dy * 0.55 - 40) + 'px) scale(1.08) rotate(-6deg)', offset: 0.55 },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ') rotate(0deg)', opacity: toEl.classList.contains('card') ? 1 : 0.2 },
+    ], { duration: 520, easing: 'cubic-bezier(.3,.7,.3,1)' });
+    anim.onfinish = anim.oncancel = () => { ghost.remove(); toEl.style.visibility = ''; };
+  }
+
+  // ---------- chat (online tables) ----------
+  function renderChat(scroll) {
+    const list = $('chatLog');
+    list.innerHTML = '';
+    if (!chat.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'No messages yet. Say hello!'; list.appendChild(li); }
+    chat.forEach((m) => {
+      const li = document.createElement('li');
+      const who = document.createElement('span'); who.className = 'from'; who.textContent = m.from + ':';
+      li.appendChild(who); li.appendChild(document.createTextNode(' ' + m.text));
+      list.appendChild(li);
+    });
+    if (scroll !== false) list.scrollTop = list.scrollHeight;
+  }
+  $('chatForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = $('chatInput').value.trim();
+    if (!text) return;
+    send({ type: 'chat', text });
+    $('chatInput').value = '';
+  });
 
   $('stockBtn').onclick = () => act('draw');
   $('discardBtn').onclick = () => act('take');
@@ -232,7 +302,7 @@
     if (view.winner != null) { localGame = null; view = null; show('roundOver', false); show('setup', true); renderNameFields(); return; }
     S.nextRound(localGame); resetUi(); refreshLocal();
   };
-  $('rulesBtn').onclick = () => show('rules', true);
+  $('rulesBtn').onclick = $('rulesLink').onclick = $('homeRules').onclick = $('lobbyRules').onclick = () => show('rules', true);
   $('closeRules').onclick = () => show('rules', false);
 
   // ---------- each player arranges their own hand ----------
@@ -322,6 +392,9 @@
     if (!view) return;
     const local = mode === 'local';
     const me = view.me;
+    const withChat = mode === 'online';
+    show('chat', withChat);
+    document.querySelector('.table').classList.toggle('withchat', withChat);
     const myTurn = view.turn === me;
     const over = view.phase === 'over';
     const hidden = local && revealedFor !== view.turn && !over;
@@ -332,6 +405,7 @@
     view.players.forEach((p, i) => {
       const chip = document.createElement('div');
       chip.className = 'pchip' + (i === view.turn && !over ? ' turn' : '') + (p.eliminated ? ' out' : '');
+      chip.dataset.seat = i;
       const conn = mode === 'online' && lobby && lobby.seats[i] ? '<span class="dot' + (lobby.seats[i].connected ? '' : ' off') + '" title="' + (lobby.seats[i].connected ? 'online' : 'offline') + '"></span>' : '';
       chip.innerHTML = conn + '<span>' + esc(p.name) + (mode === 'online' && i === me ? ' (you)' : '') + '</span>' +
         '<span class="score">' + p.score + '</span>' +
