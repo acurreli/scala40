@@ -7,6 +7,7 @@ Scala 40 (Italian rummy) for friends — live at https://scala40.fly.dev
 
 ## Admin
 - First start: the server prints a temporary admin password in the Fly.io log (`username: admin`). Sign in at `/admin` and choose your own.
+- Forgot the admin password? Set the Fly.io secret `ADMIN_RESET_PASSWORD=1`; the next start prints a new temporary password. Remove the secret afterwards.
 - The admin can open/close the game room (closing ends every game) and create, pause, resume, rename, reset or delete delegates.
 - Passwords are stored only as salted scrypt hashes.
 

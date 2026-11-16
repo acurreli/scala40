@@ -55,8 +55,9 @@ const cleanUsername = (u) => String(u || '').trim().toLowerCase();
 
 function ensureAdmin() {
   const admin = db.users.admin;
-  if (admin && !admin.mustChange) return null;
-  // No admin yet, or the temporary password was never changed: issue a fresh temporary one.
+  // Issue a temporary password only the first time, or when a reset is requested with the
+  // ADMIN_RESET_PASSWORD=1 secret (in case the admin password is forgotten).
+  if (admin && process.env.ADMIN_RESET_PASSWORD !== '1') return null;
   const pw = tempPassword();
   db.users.admin = Object.assign(admin || { username: 'admin', name: 'Admin', role: 'admin', status: 'active', created: Date.now() },
     { hash: hashPassword(pw), mustChange: true });
