@@ -261,9 +261,13 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <h2>Scala 40</h2>
     <div class="section">
       <h3>Play online with friends</h3>
-      <p>Create a table, then send the invite link. Everyone plays from their own phone or computer.</p>
-      <label for="onlineName">Your name<input id="onlineName" maxlength="16" autocomplete="nickname"></label>
-      <button class="btn primary" id="createBtn" type="button">Create a table</button>
+      <p id="onlineIntro">Create a table, then send the invite link. Everyone plays from their own phone or computer.</p>
+      <div id="createBox" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+        <p id="signedInAs"></p>
+        <label for="onlineName">Your name at the table<input id="onlineName" maxlength="16" autocomplete="nickname"></label>
+        <button class="btn primary" id="createBtn" type="button">Create a table</button>
+      </div>
+      <p id="signInNote" class="hidden">Only the organizer and their delegates can create tables. Got an invite link? Just open it. <a href="/admin">Organizer sign in</a></p>
       <div class="err" id="homeErr"></div>
     </div>
     <div class="section">

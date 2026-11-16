@@ -3,12 +3,19 @@ primary_region = "ewr"
 
 [build]
 
+# Permanent disk: accounts, settings and every table are saved here.
+[mounts]
+  source = "scala40_data"
+  destination = "/data"
+  initial_size = "1gb"
+
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  # Stop the server a few minutes after the last player leaves; start it again on the next visit.
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
 [[vm]]
   memory = "256mb"

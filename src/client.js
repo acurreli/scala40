@@ -63,6 +63,25 @@
   $('backHome').onclick = () => { show('setup', false); show('home', true); };
   $('joinHome').onclick = () => { history.replaceState(null, '', '/'); show('join', false); show('home', true); };
 
+  // Who is signed in, and is the game room open?
+  async function loadAccount() {
+    let me = null, open = true;
+    try { const r = await (await fetch('/api/me', { credentials: 'same-origin' })).json(); me = r.user; open = r.site.open; } catch (e) { /* offline */ }
+    const canCreate = open && me && !me.mustChange && me.status === 'active';
+    show('createBox', !!canCreate);
+    show('signInNote', open && !canCreate);
+    $('onlineIntro').textContent = open
+      ? 'Create a table, then send the invite link. Everyone plays from their own phone or computer.'
+      : 'The game room is closed right now. Ask the organizer to open it.';
+    if (canCreate) {
+      $('signedInAs').innerHTML = 'Signed in as <b></b> · <a href="/admin">Account</a>';
+      $('signedInAs').querySelector('b').textContent = me.name;
+      if (!$('onlineName').value) $('onlineName').value = me.name;
+    }
+    if (me && me.mustChange && open) $('signInNote').innerHTML = 'Choose your own password first: <a href="/admin">go to the sign-in page</a>.';
+  }
+  loadAccount();
+
   // ---------- pass and play ----------
   let names = ['Player 1', 'Player 2', 'Player 3'];
   function renderNameFields() {
@@ -104,6 +123,7 @@
     ws.onopen = () => { show('banner', false); onOpen(); };
     ws.onmessage = (ev) => onServer(JSON.parse(ev.data));
     ws.onclose = () => {
+      if (online.closedByServer) { online.closedByServer = false; return; }
       if (!online.joined) {
         $('homeErr').textContent = $('joinErr').textContent = 'Could not reach the game server. Check your connection and try again.';
         return;
@@ -154,6 +174,16 @@
       return;
     }
     if (msg.type === 'kicked') { online.joined = false; say(msg.error, 'err'); render(); }
+    if (msg.type === 'closed') {
+      online.closedByServer = true;
+      online.joined = false; view = null; lobby = null;
+      ['lobby', 'roundOver', 'handoff', 'invitePanel', 'join'].forEach((id) => show(id, false));
+      $('chat').classList.remove('open');
+      history.replaceState(null, '', '/');
+      $('homeErr').textContent = msg.error;
+      show('home', true);
+      loadAccount();
+    }
   }
 
   // Opening an invite link: /t/CODE?m=MACHINE

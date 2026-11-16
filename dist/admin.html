@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scala 40 Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Layout: one narrow column of cards — sign-in, game room switch, delegates, password. */
+  --felt: #164a3c;
+  --felt-deep: #0f3529;
+  --felt-line: #2b6b58;
+  --card: #fbf8f1;
+  --gold: #e3b341;
+  --text: #eef3ee;
+  --muted: #a9c4b8;
+  --danger: #ffb4a9;
+  --display: "DM Serif Display", Georgia, serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: radial-gradient(ellipse at 50% 0%, var(--felt) 0%, var(--felt-deep) 80%); color: var(--text); font-family: var(--body); font-size: 15px; }
+main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+h1, h2 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; }
+h1 { font-size: 30px; margin-right: auto; }
+h2 { font-size: 22px; }
+p { margin: 0; color: var(--muted); line-height: 1.5; }
+a { color: var(--gold); }
+.card { background: rgba(0,0,0,.2); border: 1px solid var(--felt-line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+input { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--felt-line); background: rgba(0,0,0,.25); color: var(--text); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row > label { flex: 1; min-width: 160px; }
+button { font: inherit; font-size: 14px; cursor: pointer; border-radius: 8px; padding: 8px 14px; border: none; font-weight: 600; background: var(--card); color: #1d1f1c; }
+button.primary { background: var(--gold); color: #2a2205; }
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--felt-line); font-weight: 500; }
+button.danger { background: #7a1d17; color: #fff; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.err { color: var(--danger); font-size: 14px; min-height: 1em; }
+.ok { color: #b9f0c6; font-size: 14px; }
+.pill { font-size: 12px; padding: 2px 9px; border-radius: 999px; font-weight: 600; }
+.pill.open, .pill.active { background: rgba(111,209,139,.18); color: #b9f0c6; }
+.pill.closed, .pill.paused { background: rgba(255,180,169,.15); color: var(--danger); }
+.status { display: flex; align-items: center; gap: 10px; font-size: 18px; }
+.secret { background: rgba(227,179,65,.12); border: 1px solid var(--gold); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.secret code { font-size: 18px; letter-spacing: .05em; color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--felt-line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+td .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+td .actions button { padding: 5px 9px; font-size: 12px; }
+.tablewrap { overflow-x: auto; }
+.empty { color: var(--muted); }
+.hidden { display: none !important; }
+@media (max-width: 560px) { h1 { font-size: 24px; } th:nth-child(4), td:nth-child(4) { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Scala 40 Admin</h1>
+    <span id="who" class="hidden"></span>
+    <a href="/">Game room</a>
+    <button class="ghost hidden" id="logoutBtn" type="button">Sign out</button>
+  </header>
+
+  <!-- Sign in -->
+  <form class="card hidden" id="loginCard">
+    <h2>Sign in</h2>
+    <p>For the organizer and delegates. Players don't need an account: they join with an invite link.</p>
+    <label for="loginUser">Username<input id="loginUser" autocomplete="username" required></label>
+    <label for="loginPass">Password<input id="loginPass" type="password" autocomplete="current-password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+
+  <!-- Change password -->
+  <form class="card hidden" id="pwCard">
+    <h2 id="pwTitle">Change your password</h2>
+    <p id="pwNote">At least 8 characters. It is stored only as a one-way hash, so nobody can read it back, including the admin.</p>
+    <label for="pwCurrent">Current password<input id="pwCurrent" type="password" autocomplete="current-password" required></label>
+    <label for="pwNew">New password<input id="pwNew" type="password" autocomplete="new-password" minlength="8" required></label>
+    <label for="pwNew2">New password again<input id="pwNew2" type="password" autocomplete="new-password" minlength="8" required></label>
+    <div class="row">
+      <button class="primary" type="submit">Save new password</button>
+      <button class="ghost" type="button" id="pwCancel">Cancel</button>
+    </div>
+    <div class="err" id="pwErr"></div>
+  </form>
+
+  <!-- Delegate home -->
+  <section class="card hidden" id="delegateCard">
+    <h2>You're a delegate</h2>
+    <p>You can create tables in the game room and send the invite links. The admin manages delegate accounts.</p>
+    <div class="row">
+      <a href="/"><button class="primary" type="button">Go to the game room</button></a>
+      <button class="ghost" type="button" id="delegatePw">Change my password</button>
+    </div>
+  </section>
+
+  <!-- Game room switch -->
+  <section class="card hidden" id="siteCard">
+    <h2>Game room</h2>
+    <div class="status"><span class="pill" id="sitePill"></span><span id="siteText"></span></div>
+    <p id="siteHelp"></p>
+    <div class="row" id="siteActions"></div>
+  </section>
+
+  <!-- Delegates -->
+  <section class="card hidden" id="delegatesCard">
+    <h2>Delegates</h2>
+    <p>People you allow to create tables. Each gets a username and a temporary password, which they must change when they first sign in.</p>
+    <form class="row" id="newDelegate">
+      <label for="dName">Name<input id="dName" maxlength="30" placeholder="Isabella" required></label>
+      <label for="dUser">Username<input id="dUser" maxlength="24" placeholder="isabella" autocapitalize="off" required></label>
+      <button class="primary" type="submit" style="align-self:flex-end">Create delegate</button>
+    </form>
+    <div class="err" id="dErr"></div>
+    <div class="secret hidden" id="secretBox">
+      <div id="secretText"></div>
+      <div class="row"><code id="secretPw"></code><button type="button" id="secretCopy">Copy</button><button class="ghost" type="button" id="secretDone">Done</button></div>
+      <p>This temporary password is shown only once. Send it privately; they choose their own when they sign in at <b id="adminUrl"></b>.</p>
+    </div>
+    <div class="tablewrap"><table id="dTable"></table></div>
+  </section>
+
+  <section class="card hidden" id="adminPwCard">
+    <h2>Your password</h2>
+    <div class="row"><button class="ghost" type="button" id="adminPw">Change my password</button></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const show = (id, on) => $(id).classList.toggle('hidden', !on);
+  let me = null;
+  let state = null;
+  let confirming = null; // 'close' or 'delete:<username>'
+
+  async function call(method, url, body) {
+    const res = await fetch(url, {
+      method, credentials: 'same-origin',
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* empty */ }
+    if (!res.ok) throw new Error(data.error || 'Something went wrong.');
+    return data;
+  }
+  const fmt = (t) => t ? new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'never';
+
+  async function refresh() {
+    const r = await call('GET', '/api/me');
+    me = r.user;
+    state = null;
+    if (me && me.role === 'admin' && !me.mustChange) state = await call('GET', '/api/admin/state');
+    render();
+  }
+
+  function render(forcePw) {
+    const signedIn = !!me;
+    show('loginCard', !signedIn);
+    show('logoutBtn', signedIn);
+    show('who', signedIn);
+    if (signedIn) $('who').textContent = 'Signed in as ' + me.name + (me.role === 'admin' ? ' (admin)' : ' (delegate)');
+    const mustChange = signedIn && me.mustChange;
+    const pwOpen = signedIn && (mustChange || forcePw === true);
+    show('pwCard', pwOpen);
+    show('pwCancel', pwOpen && !mustChange);
+    $('pwTitle').textContent = mustChange ? 'Choose your own password' : 'Change your password';
+    $('pwNote').textContent = mustChange
+      ? 'You signed in with a temporary password. Choose your own now (at least 8 characters). It is stored only as a one-way hash.'
+      : 'At least 8 characters. It is stored only as a one-way hash, so nobody can read it back.';
+    const isAdmin = signedIn && !mustChange && me.role === 'admin';
+    show('delegateCard', signedIn && !mustChange && me.role === 'delegate' && !pwOpen);
+    show('siteCard', isAdmin && !pwOpen);
+    show('delegatesCard', isAdmin && !pwOpen);
+    show('adminPwCard', isAdmin && !pwOpen);
+    if (isAdmin && state) { renderSite(); renderDelegates(); }
+    $('adminUrl').textContent = location.origin + '/admin';
+  }
+
+  function renderSite() {
+    const s = state.site;
+    $('sitePill').textContent = s.open ? 'Open' : 'Closed';
+    $('sitePill').className = 'pill ' + (s.open ? 'open' : 'closed');
+    $('siteText').textContent = s.open
+      ? (s.tables ? s.tables + ' table' + (s.tables === 1 ? '' : 's') + ', ' + s.playing + ' playing' : 'No tables right now')
+      : 'Nobody can create or join tables';
+    $('siteHelp').textContent = s.open
+      ? 'Closing the game room ends every game immediately and stops anyone from creating or joining tables until you open it again. The server also stops by itself when nobody is connected, so you only pay while people play.'
+      : 'Open the game room to let you and your delegates create tables again.';
+    const box = $('siteActions'); box.innerHTML = '';
+    if (!s.open) {
+      box.appendChild(btn('Open the game room', 'primary', () => doSite(true)));
+    } else if (confirming === 'close') {
+      const t = document.createElement('span'); t.textContent = s.playing ? 'End ' + s.playing + ' game(s) in progress?' : 'Close the game room?';
+      box.appendChild(t);
+      box.appendChild(btn('Yes, close and end all games', 'danger', () => doSite(false)));
+      box.appendChild(btn('Cancel', 'ghost', () => { confirming = null; render(); }));
+    } else {
+      box.appendChild(btn('Close the game room', 'danger', () => { confirming = 'close'; render(); }));
+    }
+  }
+
+  function renderDelegates() {
+    const t = $('dTable');
+    t.innerHTML = '';
+    if (!state.delegates.length) {
+      const tr = document.createElement('tr'); tr.innerHTML = '<td class="empty">No delegates yet.</td>'; t.appendChild(tr); return;
+    }
+    t.innerHTML = '<tr><th>Name</th><th>Username</th><th>Status</th><th>Last sign-in</th><th>Actions</th></tr>';
+    state.delegates.forEach((d) => {
+      const tr = document.createElement('tr');
+      const name = document.createElement('td'); name.textContent = d.name;
+      const user = document.createElement('td'); user.textContent = d.username;
+      const st = document.createElement('td');
+      const pill = document.createElement('span'); pill.className = 'pill ' + d.status; pill.textContent = d.status === 'active' ? (d.mustChange ? 'Active · temp password' : 'Active') : 'Paused';
+      st.appendChild(pill);
+      const last = document.createElement('td'); last.textContent = fmt(d.lastLogin);
+      const act = document.createElement('td'); const box = document.createElement('div'); box.className = 'actions';
+      if (confirming === 'delete:' + d.username) {
+        box.appendChild(btn('Yes, delete ' + d.username, 'danger', () => delegate(d.username, { action: 'delete' })));
+        box.appendChild(btn('Cancel', 'ghost', () => { confirming = null; render(); }));
+      } else {
+        box.appendChild(d.status === 'active'
+          ? btn('Pause', 'ghost', () => delegate(d.username, { action: 'pause' }))
+          : btn('Resume', '', () => delegate(d.username, { action: 'resume' })));
+        box.appendChild(btn('New temp password', 'ghost', () => delegate(d.username, { action: 'reset' })));
+        box.appendChild(btn('Rename', 'ghost', () => renameRow(tr, d)));
+        box.appendChild(btn('Delete', 'ghost', () => { confirming = 'delete:' + d.username; render(); }));
+      }
+      act.appendChild(box);
+      [name, user, st, last, act].forEach((c) => tr.appendChild(c));
+      t.appendChild(tr);
+    });
+  }
+
+  function renameRow(tr, d) {
+    const cell = tr.children[0];
+    cell.innerHTML = '';
+    const input = document.createElement('input'); input.value = d.name; input.maxLength = 30; input.setAttribute('aria-label', 'New name for ' + d.username);
+    const save = btn('Save', 'primary', () => delegate(d.username, { action: 'rename', name: input.value }));
+    cell.appendChild(input); cell.appendChild(save);
+    input.focus();
+    input.onkeydown = (e) => { if (e.key === 'Enter') save.click(); if (e.key === 'Escape') render(); };
+  }
+
+  function btn(text, cls, fn) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = text; if (cls) b.className = cls;
+    b.onclick = fn; return b;
+  }
+
+  async function doSite(open) {
+    confirming = null;
+    try { state.site = (await call('POST', '/api/admin/site', { open })).site; } catch (e) { $('siteHelp').textContent = e.message; }
+    render();
+  }
+  async function delegate(username, body) {
+    confirming = null;
+    $('dErr').textContent = '';
+    try {
+      const r = await call('POST', '/api/admin/delegates/' + encodeURIComponent(username), body);
+      if (r.tempPassword) showSecret('New temporary password for ' + username + ':', r.tempPassword);
+      state = await call('GET', '/api/admin/state');
+    } catch (e) { $('dErr').textContent = e.message; }
+    render();
+  }
+  function showSecret(text, pw) {
+    $('secretText').textContent = text;
+    $('secretPw').textContent = pw;
+    show('secretBox', true);
+  }
+  $('secretCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('secretPw').textContent); $('secretCopy').textContent = 'Copied'; }
+    catch (e) { $('secretCopy').textContent = 'Select and copy'; }
+    setTimeout(() => { $('secretCopy').textContent = 'Copy'; }, 2000);
+  };
+  $('secretDone').onclick = () => { $('secretPw').textContent = ''; show('secretBox', false); };
+
+  $('newDelegate').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('dErr').textContent = '';
+    try {
+      const r = await call('POST', '/api/admin/delegates', { name: $('dName').value, username: $('dUser').value });
+      showSecret('Delegate ' + r.delegate.username + ' created. Temporary password:', r.tempPassword);
+      $('dName').value = ''; $('dUser').value = '';
+      state = await call('GET', '/api/admin/state');
+      render();
+    } catch (err) { $('dErr').textContent = err.message; }
+  });
+  $('dName').addEventListener('input', () => {
+    if (!$('dUser').dataset.touched) $('dUser').value = $('dName').value.toLowerCase().replace(/[^a-z0-9._-]+/g, '');
+  });
+  $('dUser').addEventListener('input', () => { $('dUser').dataset.touched = '1'; });
+
+  $('loginCard').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('loginErr').textContent = '';
+    try {
+      await call('POST', '/api/login', { username: $('loginUser').value, password: $('loginPass').value });
+      $('loginPass').value = '';
+      await refresh();
+    } catch (err) { $('loginErr').textContent = err.message; }
+  });
+  $('pwCard').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('pwErr').textContent = '';
+    if ($('pwNew').value !== $('pwNew2').value) { $('pwErr').textContent = 'The two new passwords are different.'; return; }
+    try {
+      await call('POST', '/api/password', { current: $('pwCurrent').value, next: $('pwNew').value });
+      ['pwCurrent', 'pwNew', 'pwNew2'].forEach((id) => { $(id).value = ''; });
+      await refresh();
+    } catch (err) { $('pwErr').textContent = err.message; }
+  });
+  $('pwCancel').onclick = () => render(false);
+  $('adminPw').onclick = $('delegatePw').onclick = () => render(true);
+  $('logoutBtn').onclick = async () => { await call('POST', '/api/logout', {}); me = null; render(); };
+
+  refresh().catch((e) => { show('loginCard', true); $('loginErr').textContent = e.message; });
+})();
+</script>
+</body>
+</html>

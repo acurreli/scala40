@@ -6,4 +6,5 @@ const html = read('src/index.html')
   .replace('/*CLIENT*/', () => read('src/client.js'));
 fs.mkdirSync(__dirname + '/dist', { recursive: true });
 fs.writeFileSync(__dirname + '/dist/scala40.html', html);
+fs.copyFileSync(__dirname + '/src/admin.html', __dirname + '/dist/admin.html');
 console.log('Built dist/scala40.html');
