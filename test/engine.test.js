@@ -118,3 +118,17 @@ test('scoring: penalties, never-opened 100, doubling on close in hand, eliminati
   assert.strictEqual(rr.penalties[2], 200);
   assert.ok(g.players[2].eliminated);
 });
+
+test('putting the discard back returns it and draws from the stock', () => {
+  const top = c(9, 'H');
+  const stockCard = c(4, 'S');
+  const g = rigged([[c(2, 'S'), c(5, 'D')], [c(5, 'S')], [c(6, 'S')]], top, [stockCard]);
+  assert.ok(S.takeDiscard(g).ok);
+  const res = S.returnDiscard(g);
+  assert.ok(res.ok);
+  assert.strictEqual(g.round.discard[g.round.discard.length - 1].id, top.id);
+  assert.ok(g.round.hands[0].some((x) => x.id === stockCard.id));
+  assert.ok(!g.round.hands[0].some((x) => x.id === top.id));
+  assert.strictEqual(g.round.phase, 'play');
+  assert.ok(S.discard(g, g.round.hands[0][0].id).ok);
+});

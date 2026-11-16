@@ -301,6 +301,27 @@
     return { ok: true };
   }
 
+  // Took the discard but can't use it: put it back on the pile (undoing anything laid this turn)
+  // and draw from the stock instead.
+  function returnDiscard(g) {
+    let r = g.round;
+    if (r.phase !== 'play' || !r.turnState || r.turnState.tookDiscardId == null) return fail('You did not take the discard this turn.');
+    const id = r.turnState.tookDiscardId;
+    if (r.snapshot) { g.round = clone(r.snapshot); r = g.round; }
+    const hand = r.hands[r.turn];
+    const i = hand.findIndex((c) => c.id === id);
+    if (i < 0) return fail('That card is no longer in your hand.');
+    const [card] = hand.splice(i, 1);
+    r.discard.push(card);
+    r.phase = 'draw';
+    r.turnState = null;
+    r.snapshot = null;
+    g.log.push(`${g.players[r.turn].name} puts ${cardLabel(card)} back.`);
+    const res = drawStock(g);
+    if (!res.ok) return res;
+    return { ok: true, card: res.card, returned: card };
+  }
+
   function useJokers(ts, cards) {
     for (const c of cards) {
       const i = ts.jokersToUse.indexOf(c.id);
@@ -410,7 +431,7 @@
     const card = hand.find((c) => c.id === cardId);
     if (!card) return fail('That card is not in your hand.');
     if (ts.tookDiscardId != null && hand.some((c) => c.id === ts.tookDiscardId)) {
-      return fail('You took the discard: you must use it in a combination this turn (or reset the turn).');
+      return fail('You took the discard: use it in a combination this turn, or press "Put it back" to return it and draw from the deck.');
     }
     if (ts.jokersToUse.length) return fail('You must use the joker you took from the table this turn.');
     if (!ts.startOpened && ts.newMeldIds.length > 0 && ts.newMeldPoints < g.opts.openingPoints) {
@@ -507,7 +528,7 @@
     SUITS, SUIT_SYMBOL, DEFAULT_OPTIONS,
     makeDeck, shuffle, isJoker, cardLabel, penaltyValue,
     validateMeld,
-    newGame, nextRound, drawStock, takeDiscard, resetTurn,
+    newGame, nextRound, drawStock, takeDiscard, resetTurn, returnDiscard,
     layMeld, attach, swapJoker: swapJokerSafe, discard: discardCard,
     sortHand, activeIndexes, viewFor,
   };

@@ -80,6 +80,7 @@ const ACTIONS = {
   swap: (g, a) => S.swapJoker(g, a.meldId, a.id),
   discard: (g, a) => S.discard(g, a.id),
   reset: (g) => S.resetTurn(g),
+  putBack: (g) => S.returnDiscard(g),
 };
 
 function handle(ws, msg) {

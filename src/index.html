@@ -98,6 +98,7 @@ h1, h2 { font-family: var(--display); font-weight: 400; text-wrap: balance; marg
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn { border: none; border-radius: 8px; padding: 9px 14px; background: var(--card); color: var(--ink); font-weight: 600; }
 .btn.primary { background: var(--gold); color: #2a2205; }
+#putBackBtn { background: #f3d7a0; }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 
 /* overlays */
@@ -188,6 +189,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
   .hand .card.sel { transform: translateY(-8px); }
   .hand .card.new::after { font-size: 9px; top: -8px; }
   .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .actions.five { grid-template-columns: repeat(3, 1fr); }
   .actions .btn { padding: 10px 4px; font-size: 13px; }
   .long { display: none; }
   .back { width: 42px; height: 60px; }
@@ -246,6 +248,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <div class="actions">
       <button class="btn primary" id="layBtn" type="button">Lay down<span class="long"> selected</span></button>
       <button class="btn" id="discardSelBtn" type="button">Discard<span class="long"> selected</span></button>
+      <button class="btn hidden" id="putBackBtn" type="button">Put it back</button>
       <button class="btn" id="resetBtn" type="button">Undo<span class="long"> this turn</span></button>
       <button class="btn" id="clearBtn" type="button">Clear<span class="long"> selection</span></button>
     </div>

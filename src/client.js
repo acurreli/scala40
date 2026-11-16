@@ -207,6 +207,7 @@
     lay: (g, a) => S.layMeld(g, a.ids), attach: (g, a) => S.attach(g, a.meldId, a.ids),
     swap: (g, a) => S.swapJoker(g, a.meldId, a.id), discard: (g, a) => S.discard(g, a.id),
     reset: (g) => S.resetTurn(g),
+    putBack: (g) => S.returnDiscard(g),
   };
   function act(action, args) {
     if (mode === 'online') { send({ type: 'act', action, args: args || {} }); return; }
@@ -218,7 +219,11 @@
   }
   function afterAction(action, info) {
     selected.clear();
-    if (action === 'draw' || action === 'take') {
+    if (action === 'putBack') {
+      lastDrawnId = info.cardId;
+      say('You put the card back and drew from the deck.', 'ok');
+      pendingFly = { from: 'stock', id: info.cardId };
+    } else if (action === 'draw' || action === 'take') {
       lastDrawnId = info.cardId;
       say(action === 'take' ? 'Use the card you took in a combination this turn.' : '', 'ok');
       pendingFly = { from: action === 'take' ? 'discard' : 'stock', id: info.cardId };
@@ -305,6 +310,7 @@
   $('layBtn').onclick = () => act('lay', { ids: Array.from(selected) });
   $('discardSelBtn').onclick = () => act('discard', { id: Array.from(selected)[0] });
   $('resetBtn').onclick = () => act('reset');
+  $('putBackBtn').onclick = () => act('putBack');
   $('clearBtn').onclick = () => { selected.clear(); render(); };
   $('revealBtn').onclick = () => { revealedFor = view.turn; say(''); render(); };
 
@@ -532,6 +538,10 @@
     $('layBtn').disabled = !playing || selected.size < 3;
     $('discardSelBtn').disabled = !playing || selected.size !== 1;
     $('resetBtn').disabled = !playing;
+    const tookId = playing && ts ? ts.tookDiscardId : null;
+    const canPutBack = tookId != null && view.hand.some((c) => c.id === tookId);
+    show('putBackBtn', canPutBack);
+    document.querySelector('.actions').classList.toggle('five', canPutBack);
     $('clearBtn').disabled = selected.size === 0;
     $('sortSuit').disabled = hidden;
     $('sortRank').disabled = hidden;
