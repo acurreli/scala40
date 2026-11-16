@@ -17,6 +17,8 @@
   let handOrder = {};
   let drag = null;
   let chat = [];
+  let unread = 0;
+  const phone = () => window.matchMedia('(max-width: 640px)').matches;
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- small helpers ----------
@@ -136,7 +138,11 @@
     }
     if (msg.type === 'done') { afterAction(msg.info.action, msg.info); return; }
     if (msg.type === 'chatHistory') { chat = msg.messages || []; renderChat(); return; }
-    if (msg.type === 'chat') { chat.push(msg.message); if (chat.length > 100) chat.shift(); renderChat(true); return; }
+    if (msg.type === 'chat') {
+      chat.push(msg.message); if (chat.length > 100) chat.shift();
+      if (phone() && !$('chat').classList.contains('open') && msg.message.seat !== (lobby && lobby.seat)) unread++;
+      renderChat(true); updateChatToggle(); return;
+    }
     if (msg.type === 'error') {
       if (!online.joined || msg.fatal) {
         online.joined = false;
@@ -275,6 +281,17 @@
     });
     if (scroll !== false) list.scrollTop = list.scrollHeight;
   }
+  function updateChatToggle() {
+    $('chatToggle').textContent = unread ? 'Chat (' + unread + ')' : 'Chat';
+    $('chatToggle').setAttribute('aria-expanded', $('chat').classList.contains('open') ? 'true' : 'false');
+  }
+  $('chatToggle').onclick = () => {
+    const open = !$('chat').classList.contains('open');
+    $('chat').classList.toggle('open', open);
+    if (open) { unread = 0; renderChat(); $('chatInput').focus(); }
+    updateChatToggle();
+  };
+  $('chatClose').onclick = () => { $('chat').classList.remove('open'); updateChatToggle(); };
   $('chatForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const text = $('chatInput').value.trim();
@@ -408,6 +425,7 @@
     const withChat = mode === 'online';
     show('chat', withChat);
     show('inviteBtn', withChat && !!lobby);
+    show('chatToggle', withChat && phone());
     document.querySelector('.table').classList.toggle('withchat', withChat);
     const myTurn = view.turn === me;
     const over = view.phase === 'over';
@@ -423,7 +441,7 @@
       const conn = mode === 'online' && lobby && lobby.seats[i] ? '<span class="dot' + (lobby.seats[i].connected ? '' : ' off') + '" title="' + (lobby.seats[i].connected ? 'online' : 'offline') + '"></span>' : '';
       chip.innerHTML = conn + '<span>' + esc(p.name) + (mode === 'online' && i === me ? ' (you)' : '') + '</span>' +
         '<span class="score">' + p.score + '</span>' +
-        (p.eliminated ? '' : '<span class="badge' + (p.opened ? '' : ' no') + '">' + (p.opened ? 'open' : p.cards + ' cards') + '</span>');
+        (p.eliminated ? '' : '<span class="badge' + (p.opened ? '' : ' no') + '">' + (p.opened ? 'open' : p.cards + '<span class="cw"> cards</span>') + '</span>');
       pbox.appendChild(chip);
     });
 

@@ -143,13 +143,57 @@ table.scores td.num, table.scores th.num { text-align: right; }
 .status .linkbtn + .handtools { margin-left: 0; }
 .flying { position: fixed; z-index: 30; pointer-events: none; margin: 0; }
 @media (max-width: 900px) { .table.withchat { grid-template-columns: 150px 1fr; } .table.withchat .chat { grid-column: 1 / -1; max-height: 220px; } }
+.chathead { display: flex; align-items: center; justify-content: space-between; }
+#chatClose { display: none; }
 @media (max-width: 640px) {
-  .table.withchat { grid-template-columns: 1fr; }
-  .log { max-width: none; }
-  .table { grid-template-columns: 1fr; }
-  .piles { flex-direction: row; justify-content: center; }
-  .card { width: 52px; height: 76px; font-size: 15px; }
-  .back { width: 52px; height: 76px; }
+  .app { padding: 8px 10px; gap: 8px; }
+  .top { flex-wrap: wrap; gap: 6px; }
+  .top h1 { margin-right: auto !important; }
+  .top h1 { font-size: 19px; margin-right: 2px; flex-shrink: 0; }
+  .round { display: none; }
+  .players { order: 5; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+  .cw { display: none; }
+  .players::-webkit-scrollbar { display: none; }
+  .pchip { padding: 3px 8px; gap: 5px; font-size: 12px; flex-shrink: 0; }
+  .badge { font-size: 10px; }
+  .top .ghost { padding: 4px 8px; font-size: 12px; flex-shrink: 0; }
+  #inviteBtn { display: none; }
+  .table, .table.withchat { display: flex; flex-direction: column; gap: 8px; }
+  .piles { flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; }
+  .pile { flex-direction: row; gap: 6px; font-size: 11px; }
+  .pile .back, .pile .card { width: 40px; height: 58px; font-size: 13px; border-width: 2px; }
+  #stockCount { max-width: 4em; }
+  .pile:nth-child(2) > span { display: none; }
+  .log { flex: 1; min-width: 0; max-width: none; font-size: 11px; }
+  .log li { display: none; }
+  .log li:last-child { display: block; }
+  .melds { flex: 1; min-height: 110px; padding: 6px; gap: 6px; }
+  .meld { padding: 4px 6px 6px; }
+  .meld .card { width: 32px; height: 46px; font-size: 11px; margin-right: -10px; padding: 2px 3px; }
+  .meld .card .big { font-size: 1.3em; }
+  .melds .empty { font-size: 13px; }
+  .chat { display: none; }
+  .chat.open { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: 60%; z-index: 15; border-radius: 16px 16px 0 0; background: var(--felt-deep); box-shadow: 0 -8px 24px rgba(0,0,0,.5); }
+  #chatClose { display: inline-block; }
+  .dock { padding-top: 6px; gap: 6px; }
+  .status { gap: 6px; row-gap: 4px; }
+  .status .who { font-size: 17px; }
+  .msg { flex-basis: 100%; order: 5; font-size: 13px; }
+  .handtools .ghost { padding: 4px 8px; font-size: 12px; }
+  .status .linkbtn { font-size: 12px; }
+  .hand { gap: 4px; min-height: 64px; padding-top: 10px; }
+  .card { width: 42px; height: 60px; font-size: 13px; padding: 3px 4px; border-radius: 6px; }
+  .card .big { font-size: 1.35em; }
+  .card.joker .sub { font-size: 8px; }
+  .hand .card.sel { transform: translateY(-8px); }
+  .hand .card.new::after { font-size: 9px; top: -8px; }
+  .actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .actions .btn { padding: 10px 4px; font-size: 13px; }
+  .long { display: none; }
+  .back { width: 42px; height: 60px; }
+  .panel { padding: 18px; }
+  .panel h2 { font-size: 24px; }
+}
 }
 @media (prefers-reduced-motion: reduce) { .hand .card { transition: none; } }
 </style>
@@ -160,6 +204,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <h1>Scala 40</h1>
     <span class="round" id="round"></span>
     <div class="players" id="players"></div>
+    <button class="ghost hidden" id="chatToggle" type="button" aria-controls="chat" aria-expanded="false">Chat</button>
     <button class="ghost hidden" id="inviteBtn" type="button">Invite link</button>
     <button class="ghost" id="rulesBtn" type="button">Rules</button>
   </div>
@@ -179,7 +224,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     </div>
     <div class="melds" id="melds"></div>
     <aside class="chat hidden" id="chat" aria-label="Table chat">
-      <h3>Chat</h3>
+      <div class="chathead"><h3>Chat</h3><button class="ghost" id="chatClose" type="button">Close</button></div>
       <ul class="chatlog" id="chatLog" aria-live="polite"></ul>
       <form class="chatform" id="chatForm">
         <input id="chatInput" maxlength="200" autocomplete="off" placeholder="Say something…" aria-label="Chat message">
@@ -199,10 +244,10 @@ table.scores td.num, table.scores th.num { text-align: right; }
     </div>
     <div class="hand" id="hand"></div>
     <div class="actions">
-      <button class="btn primary" id="layBtn" type="button">Lay down selected</button>
-      <button class="btn" id="discardSelBtn" type="button">Discard selected</button>
-      <button class="btn" id="resetBtn" type="button">Undo this turn</button>
-      <button class="btn" id="clearBtn" type="button">Clear selection</button>
+      <button class="btn primary" id="layBtn" type="button">Lay down<span class="long"> selected</span></button>
+      <button class="btn" id="discardSelBtn" type="button">Discard<span class="long"> selected</span></button>
+      <button class="btn" id="resetBtn" type="button">Undo<span class="long"> this turn</span></button>
+      <button class="btn" id="clearBtn" type="button">Clear<span class="long"> selection</span></button>
     </div>
   </div>
 </div>
