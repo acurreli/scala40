@@ -160,6 +160,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <h1>Scala 40</h1>
     <span class="round" id="round"></span>
     <div class="players" id="players"></div>
+    <button class="ghost hidden" id="inviteBtn" type="button">Invite link</button>
     <button class="ghost" id="rulesBtn" type="button">Rules</button>
   </div>
 
@@ -219,7 +220,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     </div>
     <div class="section">
       <h3>Pass and play</h3>
-      <p>Everyone shares this one screen and takes turns.</p>
+      <p>Everyone shares this one screen and takes turns. No invite link needed.</p>
       <button class="btn" id="localBtn" type="button">Set up players</button>
     </div>
     <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
@@ -230,7 +231,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
 <div class="overlay hidden" id="setup">
   <form class="panel" id="setupForm">
     <h2>Pass and play</h2>
-    <p>Hands stay hidden between turns: pass the device when asked.</p>
+    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, go back and choose <b>Create a table</b> instead.</p>
     <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="row">
       <button class="ghost" type="button" id="addPlayer">Add player</button>
@@ -304,6 +305,19 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <li><b>Your hand:</b> drag cards to arrange them however you like.</li>
     </ul>
     <button class="btn primary" id="closeRules" type="button">Back to the table</button>
+  </div>
+</div>
+
+<!-- Invite link during the game -->
+<div class="overlay hidden" id="invitePanel">
+  <div class="panel">
+    <h2>Table <span class="tablecode" id="invCode"></span></h2>
+    <p id="invNote"></p>
+    <div class="invite">
+      <input id="invLink" readonly aria-label="Invite link">
+      <button class="btn" id="invCopy" type="button">Copy link</button>
+    </div>
+    <button class="btn primary" id="invClose" type="button">Back to the table</button>
   </div>
 </div>
 
@@ -1010,6 +1024,19 @@ table.scores td.num, table.scores th.num { text-align: right; }
     setTimeout(() => { $('copyBtn').textContent = 'Copy link'; }, 2000);
   };
   $('startBtn').onclick = () => send({ type: 'start' });
+  function inviteUrl() { return location.origin + '/t/' + lobby.code + '?m=' + encodeURIComponent(lobby.machine); }
+  $('inviteBtn').onclick = () => {
+    $('invCode').textContent = lobby.code;
+    $('invLink').value = inviteUrl();
+    $('invNote').textContent = 'This link lets anyone at this table get back in from any device. New players can only join before the cards are dealt, so start a new table if someone else wants in.';
+    show('invitePanel', true);
+  };
+  $('invClose').onclick = () => show('invitePanel', false);
+  $('invCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('invLink').value); $('invCopy').textContent = 'Copied'; }
+    catch (e) { $('invLink').select(); $('invCopy').textContent = 'Select and copy'; }
+    setTimeout(() => { $('invCopy').textContent = 'Copy link'; }, 2000);
+  };
 
   // ---------- actions (same for both modes) ----------
   const LOCAL = {
@@ -1200,7 +1227,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     show('lobby', !!waiting);
     if (!waiting) return;
     $('lobbyCode').textContent = lobby.code;
-    $('inviteLink').value = location.origin + '/t/' + lobby.code + '?m=' + encodeURIComponent(lobby.machine);
+    $('inviteLink').value = inviteUrl();
     const list = $('seatList'); list.innerHTML = '';
     lobby.seats.forEach((s, i) => {
       const li = document.createElement('li');
@@ -1223,6 +1250,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     const me = view.me;
     const withChat = mode === 'online';
     show('chat', withChat);
+    show('inviteBtn', withChat && !!lobby);
     document.querySelector('.table').classList.toggle('withchat', withChat);
     const myTurn = view.turn === me;
     const over = view.phase === 'over';

@@ -160,6 +160,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <h1>Scala 40</h1>
     <span class="round" id="round"></span>
     <div class="players" id="players"></div>
+    <button class="ghost hidden" id="inviteBtn" type="button">Invite link</button>
     <button class="ghost" id="rulesBtn" type="button">Rules</button>
   </div>
 
@@ -219,7 +220,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     </div>
     <div class="section">
       <h3>Pass and play</h3>
-      <p>Everyone shares this one screen and takes turns.</p>
+      <p>Everyone shares this one screen and takes turns. No invite link needed.</p>
       <button class="btn" id="localBtn" type="button">Set up players</button>
     </div>
     <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
@@ -230,7 +231,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
 <div class="overlay hidden" id="setup">
   <form class="panel" id="setupForm">
     <h2>Pass and play</h2>
-    <p>Hands stay hidden between turns: pass the device when asked.</p>
+    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, go back and choose <b>Create a table</b> instead.</p>
     <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="row">
       <button class="ghost" type="button" id="addPlayer">Add player</button>
@@ -304,6 +305,19 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <li><b>Your hand:</b> drag cards to arrange them however you like.</li>
     </ul>
     <button class="btn primary" id="closeRules" type="button">Back to the table</button>
+  </div>
+</div>
+
+<!-- Invite link during the game -->
+<div class="overlay hidden" id="invitePanel">
+  <div class="panel">
+    <h2>Table <span class="tablecode" id="invCode"></span></h2>
+    <p id="invNote"></p>
+    <div class="invite">
+      <input id="invLink" readonly aria-label="Invite link">
+      <button class="btn" id="invCopy" type="button">Copy link</button>
+    </div>
+    <button class="btn primary" id="invClose" type="button">Back to the table</button>
   </div>
 </div>
 

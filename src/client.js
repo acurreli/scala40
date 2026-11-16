@@ -181,6 +181,19 @@
     setTimeout(() => { $('copyBtn').textContent = 'Copy link'; }, 2000);
   };
   $('startBtn').onclick = () => send({ type: 'start' });
+  function inviteUrl() { return location.origin + '/t/' + lobby.code + '?m=' + encodeURIComponent(lobby.machine); }
+  $('inviteBtn').onclick = () => {
+    $('invCode').textContent = lobby.code;
+    $('invLink').value = inviteUrl();
+    $('invNote').textContent = 'This link lets anyone at this table get back in from any device. New players can only join before the cards are dealt, so start a new table if someone else wants in.';
+    show('invitePanel', true);
+  };
+  $('invClose').onclick = () => show('invitePanel', false);
+  $('invCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('invLink').value); $('invCopy').textContent = 'Copied'; }
+    catch (e) { $('invLink').select(); $('invCopy').textContent = 'Select and copy'; }
+    setTimeout(() => { $('invCopy').textContent = 'Copy link'; }, 2000);
+  };
 
   // ---------- actions (same for both modes) ----------
   const LOCAL = {
@@ -371,7 +384,7 @@
     show('lobby', !!waiting);
     if (!waiting) return;
     $('lobbyCode').textContent = lobby.code;
-    $('inviteLink').value = location.origin + '/t/' + lobby.code + '?m=' + encodeURIComponent(lobby.machine);
+    $('inviteLink').value = inviteUrl();
     const list = $('seatList'); list.innerHTML = '';
     lobby.seats.forEach((s, i) => {
       const li = document.createElement('li');
@@ -394,6 +407,7 @@
     const me = view.me;
     const withChat = mode === 'online';
     show('chat', withChat);
+    show('inviteBtn', withChat && !!lobby);
     document.querySelector('.table').classList.toggle('withchat', withChat);
     const myTurn = view.turn === me;
     const over = view.phase === 'over';
