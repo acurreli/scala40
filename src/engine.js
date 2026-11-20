@@ -167,6 +167,43 @@
     return { ok: false, error: 'Not a valid run (same suit, consecutive, Ace low or high, no wrap-around).' };
   }
 
+  // Split a selection of cards into valid combinations, e.g. A♠ A♥ Joker + 7♣ 7♦ Joker.
+  // Every card must be used. Returns the split worth the most points:
+  // { ok, melds: [validateMeld results], value } or { ok:false, error }.
+  function splitIntoMelds(cards) {
+    const whole = validateMeld(cards);
+    if (whole.ok) return { ok: true, melds: [whole], value: whole.value };
+    if (!cards || cards.length < 6) return { ok: false, error: whole.error };
+    let best = null;
+    let steps = 0;
+    function search(rest, acc, total) {
+      if (++steps > 200000) return;
+      if (rest.length === 0) { if (!best || total > best.value) best = { melds: acc.slice(), value: total }; return; }
+      const [first, ...others] = rest;
+      const n = others.length;
+      // Choose 2 or more companions for the first remaining card; leftovers must be 0 or at least 3.
+      for (let mask = 1; mask < (1 << n); mask++) {
+        let bits = 0; for (let m = mask; m; m &= m - 1) bits++;
+        if (bits < 2) continue;
+        const left = n - bits;
+        if (left !== 0 && left < 3) continue;
+        const group = [first], remaining = [];
+        for (let i = 0; i < n; i++) (mask & (1 << i) ? group : remaining).push(others[i]);
+        const v = validateMeld(group);
+        if (!v.ok) continue;
+        acc.push(v);
+        search(remaining, acc, total + v.value);
+        acc.pop();
+        if (steps > 200000) return;
+      }
+    }
+    search(cards.slice(), [], 0);
+    if (!best) {
+      return { ok: false, error: 'These cards do not make valid combinations. Each set or run needs at least 3 cards and at most one joker.' };
+    }
+    return { ok: true, melds: best.melds, value: best.value };
+  }
+
   // ---------- game ----------
 
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -329,29 +366,31 @@
     }
   }
 
+  // Lay down the selected cards. The selection may hold one combination or several at once
+  // (they are split automatically); either everything is laid or nothing is.
   function layMeld(g, cardIds) {
     const r = g.round;
     if (r.phase !== 'play') return fail('Draw a card first.');
     const hand = r.hands[r.turn];
+    if (!cardIds || new Set(cardIds).size !== cardIds.length) return fail('Select each card only once.');
     const cards = findInHand(hand, cardIds);
     if (!cards) return fail('Those cards are not in your hand.');
     if (hand.length - cards.length < 1) return fail('You must keep one card to discard.');
-    const v = validateMeld(cards);
-    if (!v.ok) return fail(v.error);
-    const meld = {
-      id: r.nextMeldId++,
-      owner: r.turn,
-      type: v.type,
-      entries: v.entries,
-    };
-    r.melds.push(meld);
-    removeFromHand(hand, cardIds);
+    const split = splitIntoMelds(cards);
+    if (!split.ok) return fail(split.error);
     const ts = r.turnState;
-    ts.newMeldIds.push(meld.id);
-    ts.newMeldPoints += v.value;
+    const laid = [];
+    for (const v of split.melds) {
+      const meld = { id: r.nextMeldId++, owner: r.turn, type: v.type, entries: v.entries };
+      r.melds.push(meld);
+      laid.push(meld);
+      ts.newMeldIds.push(meld.id);
+      ts.newMeldPoints += v.value;
+      g.log.push(`${g.players[r.turn].name} lays down a ${v.type}: ${meldCards(meld).map(cardLabel).join(' ')}.`);
+    }
+    removeFromHand(hand, cardIds);
     useJokers(ts, cards);
-    g.log.push(`${g.players[r.turn].name} lays down a ${v.type}: ${meldCards(meld).map(cardLabel).join(' ')}.`);
-    return { ok: true, meld, value: v.value };
+    return { ok: true, meld: laid[0], melds: laid, count: laid.length, value: split.value };
   }
 
   function meldCards(meld) { return meld.entries.map((e) => e.card); }
@@ -527,7 +566,7 @@
   const api = {
     SUITS, SUIT_SYMBOL, DEFAULT_OPTIONS,
     makeDeck, shuffle, isJoker, cardLabel, penaltyValue,
-    validateMeld,
+    validateMeld, splitIntoMelds,
     newGame, nextRound, drawStock, takeDiscard, resetTurn, returnDiscard,
     layMeld, attach, swapJoker: swapJokerSafe, discard: discardCard,
     sortHand, activeIndexes, viewFor,

@@ -187,6 +187,7 @@ function handle(ws, msg) {
     const info = { action: msg.action };
     if (res.card) info.cardId = res.card.id;
     if (res.value != null) info.value = res.value;
+    if (res.count != null) info.count = res.count;
     send(ws, { type: 'done', info });
     return broadcast(t);
   }

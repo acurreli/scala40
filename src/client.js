@@ -203,7 +203,7 @@
     if (mode === 'online') { send({ type: 'act', action, args: args || {} }); return; }
     const res = LOCAL[action](localGame, args || {});
     if (!res.ok) { say(res.error, 'err'); render(); return res; }
-    afterAction(action, { cardId: res.card && res.card.id, value: res.value });
+    afterAction(action, { cardId: res.card && res.card.id, value: res.value, count: res.count });
     refreshLocal();
     return res;
   }
@@ -217,7 +217,7 @@
       lastDrawnId = info.cardId;
       say(action === 'take' ? 'Use the card you took in a combination this turn.' : '', 'ok');
       pendingFly = { from: action === 'take' ? 'discard' : 'stock', id: info.cardId };
-    } else if (action === 'lay') say('Laid down, worth ' + info.value + ' points.', 'ok');
+    } else if (action === 'lay') say('Laid down ' + (info.count > 1 ? info.count + ' combinations' : 'a combination') + ', worth ' + info.value + ' points.', 'ok');
     else if (action === 'attach') say('Attached.', 'ok');
     else if (action === 'swap') say('You took the joker. Use it in a combination this turn.', 'ok');
     else if (action === 'reset') say('Turn undone: you are back to just after your draw.', 'ok');
@@ -537,8 +537,10 @@
     $('sortRank').disabled = hidden;
     const pv = $('preview');
     if (!hidden && selected.size >= 3) {
-      const v = S.validateMeld(view.hand.filter((c) => selected.has(c.id)));
-      pv.textContent = v.ok ? 'Valid ' + v.type + ' · ' + v.value + ' pts' : 'Not a set or run';
+      const v = S.splitIntoMelds(view.hand.filter((c) => selected.has(c.id)));
+      pv.textContent = !v.ok ? 'Not a set or run'
+        : v.melds.length === 1 ? 'Valid ' + v.melds[0].type + ' · ' + v.value + ' pts'
+        : v.melds.length + ' combinations · ' + v.value + ' pts';
       pv.className = 'preview ' + (v.ok ? 'good' : 'bad');
     } else { pv.textContent = ''; pv.className = 'preview'; }
 

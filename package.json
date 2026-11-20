@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Scala 40 (Italian rummy) — online tables and pass-and-play",
   "scripts": {
-    "test": "node --test test/engine.test.js",
+    "test": "node --test test/*.test.js",
     "build": "node build.js",
     "start": "node server.js"
   },

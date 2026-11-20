@@ -525,6 +525,43 @@ table.scores td.num, table.scores th.num { text-align: right; }
     return { ok: false, error: 'Not a valid run (same suit, consecutive, Ace low or high, no wrap-around).' };
   }
 
+  // Split a selection of cards into valid combinations, e.g. A♠ A♥ Joker + 7♣ 7♦ Joker.
+  // Every card must be used. Returns the split worth the most points:
+  // { ok, melds: [validateMeld results], value } or { ok:false, error }.
+  function splitIntoMelds(cards) {
+    const whole = validateMeld(cards);
+    if (whole.ok) return { ok: true, melds: [whole], value: whole.value };
+    if (!cards || cards.length < 6) return { ok: false, error: whole.error };
+    let best = null;
+    let steps = 0;
+    function search(rest, acc, total) {
+      if (++steps > 200000) return;
+      if (rest.length === 0) { if (!best || total > best.value) best = { melds: acc.slice(), value: total }; return; }
+      const [first, ...others] = rest;
+      const n = others.length;
+      // Choose 2 or more companions for the first remaining card; leftovers must be 0 or at least 3.
+      for (let mask = 1; mask < (1 << n); mask++) {
+        let bits = 0; for (let m = mask; m; m &= m - 1) bits++;
+        if (bits < 2) continue;
+        const left = n - bits;
+        if (left !== 0 && left < 3) continue;
+        const group = [first], remaining = [];
+        for (let i = 0; i < n; i++) (mask & (1 << i) ? group : remaining).push(others[i]);
+        const v = validateMeld(group);
+        if (!v.ok) continue;
+        acc.push(v);
+        search(remaining, acc, total + v.value);
+        acc.pop();
+        if (steps > 200000) return;
+      }
+    }
+    search(cards.slice(), [], 0);
+    if (!best) {
+      return { ok: false, error: 'These cards do not make valid combinations. Each set or run needs at least 3 cards and at most one joker.' };
+    }
+    return { ok: true, melds: best.melds, value: best.value };
+  }
+
   // ---------- game ----------
 
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -687,29 +724,31 @@ table.scores td.num, table.scores th.num { text-align: right; }
     }
   }
 
+  // Lay down the selected cards. The selection may hold one combination or several at once
+  // (they are split automatically); either everything is laid or nothing is.
   function layMeld(g, cardIds) {
     const r = g.round;
     if (r.phase !== 'play') return fail('Draw a card first.');
     const hand = r.hands[r.turn];
+    if (!cardIds || new Set(cardIds).size !== cardIds.length) return fail('Select each card only once.');
     const cards = findInHand(hand, cardIds);
     if (!cards) return fail('Those cards are not in your hand.');
     if (hand.length - cards.length < 1) return fail('You must keep one card to discard.');
-    const v = validateMeld(cards);
-    if (!v.ok) return fail(v.error);
-    const meld = {
-      id: r.nextMeldId++,
-      owner: r.turn,
-      type: v.type,
-      entries: v.entries,
-    };
-    r.melds.push(meld);
-    removeFromHand(hand, cardIds);
+    const split = splitIntoMelds(cards);
+    if (!split.ok) return fail(split.error);
     const ts = r.turnState;
-    ts.newMeldIds.push(meld.id);
-    ts.newMeldPoints += v.value;
+    const laid = [];
+    for (const v of split.melds) {
+      const meld = { id: r.nextMeldId++, owner: r.turn, type: v.type, entries: v.entries };
+      r.melds.push(meld);
+      laid.push(meld);
+      ts.newMeldIds.push(meld.id);
+      ts.newMeldPoints += v.value;
+      g.log.push(`${g.players[r.turn].name} lays down a ${v.type}: ${meldCards(meld).map(cardLabel).join(' ')}.`);
+    }
+    removeFromHand(hand, cardIds);
     useJokers(ts, cards);
-    g.log.push(`${g.players[r.turn].name} lays down a ${v.type}: ${meldCards(meld).map(cardLabel).join(' ')}.`);
-    return { ok: true, meld, value: v.value };
+    return { ok: true, meld: laid[0], melds: laid, count: laid.length, value: split.value };
   }
 
   function meldCards(meld) { return meld.entries.map((e) => e.card); }
@@ -885,7 +924,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
   const api = {
     SUITS, SUIT_SYMBOL, DEFAULT_OPTIONS,
     makeDeck, shuffle, isJoker, cardLabel, penaltyValue,
-    validateMeld,
+    validateMeld, splitIntoMelds,
     newGame, nextRound, drawStock, takeDiscard, resetTurn, returnDiscard,
     layMeld, attach, swapJoker: swapJokerSafe, discard: discardCard,
     sortHand, activeIndexes, viewFor,
@@ -1100,7 +1139,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     if (mode === 'online') { send({ type: 'act', action, args: args || {} }); return; }
     const res = LOCAL[action](localGame, args || {});
     if (!res.ok) { say(res.error, 'err'); render(); return res; }
-    afterAction(action, { cardId: res.card && res.card.id, value: res.value });
+    afterAction(action, { cardId: res.card && res.card.id, value: res.value, count: res.count });
     refreshLocal();
     return res;
   }
@@ -1114,7 +1153,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       lastDrawnId = info.cardId;
       say(action === 'take' ? 'Use the card you took in a combination this turn.' : '', 'ok');
       pendingFly = { from: action === 'take' ? 'discard' : 'stock', id: info.cardId };
-    } else if (action === 'lay') say('Laid down, worth ' + info.value + ' points.', 'ok');
+    } else if (action === 'lay') say('Laid down ' + (info.count > 1 ? info.count + ' combinations' : 'a combination') + ', worth ' + info.value + ' points.', 'ok');
     else if (action === 'attach') say('Attached.', 'ok');
     else if (action === 'swap') say('You took the joker. Use it in a combination this turn.', 'ok');
     else if (action === 'reset') say('Turn undone: you are back to just after your draw.', 'ok');
@@ -1434,8 +1473,10 @@ table.scores td.num, table.scores th.num { text-align: right; }
     $('sortRank').disabled = hidden;
     const pv = $('preview');
     if (!hidden && selected.size >= 3) {
-      const v = S.validateMeld(view.hand.filter((c) => selected.has(c.id)));
-      pv.textContent = v.ok ? 'Valid ' + v.type + ' · ' + v.value + ' pts' : 'Not a set or run';
+      const v = S.splitIntoMelds(view.hand.filter((c) => selected.has(c.id)));
+      pv.textContent = !v.ok ? 'Not a set or run'
+        : v.melds.length === 1 ? 'Valid ' + v.melds[0].type + ' · ' + v.value + ' pts'
+        : v.melds.length + ' combinations · ' + v.value + ' pts';
       pv.className = 'preview ' + (v.ok ? 'good' : 'bad');
     } else { pv.textContent = ''; pv.className = 'preview'; }
 
