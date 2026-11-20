@@ -427,3 +427,17 @@ test('a player\'s view shows only their own hand', () => {
   const json = JSON.stringify(v);
   for (const card of g.round.hands[0]) assert.ok(!json.includes('"id":' + card.id + ','), 'no card of another player leaks');
 });
+
+test('opening with A-A-joker plus 7-7-joker in one selection (54 points)', () => {
+  const S = require('../src/engine.js');
+  const J = (id) => ({ id, rank: 0, suit: null });
+  const cards = [{ id: 1, rank: 1, suit: 'S' }, { id: 2, rank: 1, suit: 'H' }, J(3), { id: 4, rank: 7, suit: 'C' }, { id: 5, rank: 7, suit: 'D' }, J(6)];
+  const r = S.splitIntoMelds(cards);
+  assert.ok(r.ok); assert.strictEqual(r.value, 54); assert.strictEqual(r.melds.length, 2);
+});
+
+test('same card twice in a set gives a clear reason', () => {
+  const S = require('../src/engine.js');
+  const r = S.splitIntoMelds([{ id: 1, rank: 1, suit: 'S' }, { id: 2, rank: 1, suit: 'S' }, { id: 3, rank: 0, suit: null }]);
+  assert.ok(!r.ok); assert.match(r.error, /twice/);
+});

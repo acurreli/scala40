@@ -173,7 +173,7 @@
   function splitIntoMelds(cards) {
     const whole = validateMeld(cards);
     if (whole.ok) return { ok: true, melds: [whole], value: whole.value };
-    if (!cards || cards.length < 6) return { ok: false, error: whole.error };
+    if (!cards || cards.length < 6) return { ok: false, error: dupSuitHint(cards) || whole.error };
     let best = null;
     let steps = 0;
     function search(rest, acc, total) {
@@ -199,12 +199,24 @@
     }
     search(cards.slice(), [], 0);
     if (!best) {
-      return { ok: false, error: 'These cards do not make valid combinations. Each set or run needs at least 3 cards and at most one joker.' };
+      return { ok: false, error: dupSuitHint(cards) || 'These cards do not make valid combinations. Each set or run needs at least 3 cards and at most one joker.' };
     }
     return { ok: true, melds: best.melds, value: best.value };
   }
 
   // ---------- game ----------
+
+  // With two decks a hand can hold the same card twice (e.g. A♠ A♠); a set can't use both.
+  function dupSuitHint(cards) {
+    const seen = {};
+    for (const c of cards) {
+      if (isJoker(c)) continue;
+      const k = c.rank + c.suit;
+      if (seen[k]) return `You have ${cardLabel(c)} twice: a set needs every card in a different suit, so those two can't go in the same set.`;
+      seen[k] = true;
+    }
+    return null;
+  }
 
   function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
