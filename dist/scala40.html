@@ -261,13 +261,11 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <h2>Scala 40</h2>
     <div class="section">
       <h3>Play online with friends</h3>
-      <p id="onlineIntro">Create a table, then send the invite link. Everyone plays from their own phone or computer.</p>
-      <div id="createBox" class="hidden" style="display:flex;flex-direction:column;gap:10px">
-        <p id="signedInAs"></p>
-        <label for="onlineName">Your name at the table<input id="onlineName" maxlength="16" autocomplete="nickname"></label>
-        <button class="btn primary" id="createBtn" type="button">Create a table</button>
-      </div>
-      <p id="signInNote" class="hidden">Only the organizer and their delegates can create tables. Got an invite link? Just open it. <a href="/admin">Organizer sign in</a></p>
+      <p id="onlineIntro">To join a game you need an invite link or a table code from the organizer. Got a link? Just open it. Got a code? Type it here.</p>
+      <form id="codeForm" class="row" style="gap:8px;align-items:flex-end">
+        <label for="codeInput" style="flex:1;min-width:140px">Table code<input id="codeInput" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD"></label>
+        <button class="btn primary" id="codeBtn" type="submit">Join</button>
+      </form>
       <div class="err" id="homeErr"></div>
     </div>
     <div class="section">
@@ -275,7 +273,10 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <p>Everyone shares this one screen and takes turns. No invite link needed.</p>
       <button class="btn" id="localBtn" type="button">Set up players</button>
     </div>
-    <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
+      <a class="ghost" id="adminBtn" href="/admin" style="text-decoration:none">Admin</a>
+    </div>
   </div>
 </div>
 
@@ -283,7 +284,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
 <div class="overlay hidden" id="setup">
   <form class="panel" id="setupForm">
     <h2>Pass and play</h2>
-    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, go back and choose <b>Create a table</b> instead.</p>
+    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, ask the organizer for an invite link.</p>
     <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="row">
       <button class="ghost" type="button" id="addPlayer">Add player</button>
@@ -302,7 +303,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <label for="joinName">Your name<input id="joinName" maxlength="16" autocomplete="nickname"></label>
     <button class="btn primary" id="joinBtn" type="button">Take a seat</button>
     <div class="err" id="joinErr"></div>
-    <button class="ghost" id="joinHome" type="button">Start my own table instead</button>
+    <button class="ghost" id="joinHome" type="button">Back</button>
   </div>
 </div>
 
@@ -965,36 +966,26 @@ table.scores td.num, table.scores th.num { text-align: right; }
 
   // ---------- home ----------
   const savedName = store.get('name') || '';
-  $('onlineName').value = savedName;
   $('joinName').value = savedName;
 
-  $('createBtn').onclick = () => {
-    const name = $('onlineName').value.trim();
-    if (!name) { $('homeErr').textContent = 'Type your name first.'; return; }
-    store.set('name', name);
-    mode = 'online';
-    connect(() => send({ type: 'create', name }));
-  };
+  $('codeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = $('codeInput').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 4) { $('homeErr').textContent = 'Type the table code you were given (4 letters or numbers).'; return; }
+    location.href = '/t/' + code;
+  });
   $('localBtn').onclick = () => { show('home', false); show('setup', true); renderNameFields(); };
   $('backHome').onclick = () => { show('setup', false); show('home', true); };
   $('joinHome').onclick = () => { history.replaceState(null, '', '/'); show('join', false); show('home', true); };
 
-  // Who is signed in, and is the game room open?
+  // Is the game room open? Tables are set up only from the admin page.
   async function loadAccount() {
-    let me = null, open = true;
-    try { const r = await (await fetch('/api/me', { credentials: 'same-origin' })).json(); me = r.user; open = r.site.open; } catch (e) { /* offline */ }
-    const canCreate = open && me && !me.mustChange && me.status === 'active';
-    show('createBox', !!canCreate);
-    show('signInNote', open && !canCreate);
+    let open = true;
+    try { const r = await (await fetch('/api/me', { credentials: 'same-origin' })).json(); open = r.site.open; } catch (e) { /* offline */ }
     $('onlineIntro').textContent = open
-      ? 'Create a table, then send the invite link. Everyone plays from their own phone or computer.'
+      ? 'To join a game you need an invite link or a table code from the organizer. Got a link? Just open it. Got a code? Type it here.'
       : 'The game room is closed right now. Ask the organizer to open it.';
-    if (canCreate) {
-      $('signedInAs').innerHTML = 'Signed in as <b></b> · <a href="/admin">Account</a>';
-      $('signedInAs').querySelector('b').textContent = me.name;
-      if (!$('onlineName').value) $('onlineName').value = me.name;
-    }
-    if (me && me.mustChange && open) $('signInNote').innerHTML = 'Choose your own password first: <a href="/admin">go to the sign-in page</a>.';
+    show('codeForm', open);
   }
   loadAccount();
 
@@ -1352,7 +1343,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     const waiting = mode === 'online' && online.joined && lobby && (!lobby.started || !view);
     show('lobby', !!waiting);
     if (!waiting) return;
-    $('lobbyCode').textContent = lobby.code;
+    $('lobbyCode').textContent = lobby.code + (lobby.label ? ' · ' + lobby.label : '');
     $('inviteLink').value = inviteUrl();
     const list = $('seatList'); list.innerHTML = '';
     lobby.seats.forEach((s, i) => {
@@ -1365,7 +1356,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     $('startBtn').disabled = lobby.seats.length < 2;
     $('lobbyNote').textContent = lobby.isHost
       ? (lobby.seats.length < 2 ? 'Waiting for at least one more player…' : 'Deal when everyone is here.')
-      : 'Waiting for ' + lobby.seats[0].name + ' to deal…';
+      : 'Waiting for ' + lobby.seats[0].name + ' (the host) to deal…';
     $('lobbyErr').textContent = message.kind === 'err' ? message.text : '';
   }
 

@@ -261,13 +261,11 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <h2>Scala 40</h2>
     <div class="section">
       <h3>Play online with friends</h3>
-      <p id="onlineIntro">Create a table, then send the invite link. Everyone plays from their own phone or computer.</p>
-      <div id="createBox" class="hidden" style="display:flex;flex-direction:column;gap:10px">
-        <p id="signedInAs"></p>
-        <label for="onlineName">Your name at the table<input id="onlineName" maxlength="16" autocomplete="nickname"></label>
-        <button class="btn primary" id="createBtn" type="button">Create a table</button>
-      </div>
-      <p id="signInNote" class="hidden">Only the organizer and their delegates can create tables. Got an invite link? Just open it. <a href="/admin">Organizer sign in</a></p>
+      <p id="onlineIntro">To join a game you need an invite link or a table code from the organizer. Got a link? Just open it. Got a code? Type it here.</p>
+      <form id="codeForm" class="row" style="gap:8px;align-items:flex-end">
+        <label for="codeInput" style="flex:1;min-width:140px">Table code<input id="codeInput" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD"></label>
+        <button class="btn primary" id="codeBtn" type="submit">Join</button>
+      </form>
       <div class="err" id="homeErr"></div>
     </div>
     <div class="section">
@@ -275,7 +273,10 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <p>Everyone shares this one screen and takes turns. No invite link needed.</p>
       <button class="btn" id="localBtn" type="button">Set up players</button>
     </div>
-    <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
+      <a class="ghost" id="adminBtn" href="/admin" style="text-decoration:none">Admin</a>
+    </div>
   </div>
 </div>
 
@@ -283,7 +284,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
 <div class="overlay hidden" id="setup">
   <form class="panel" id="setupForm">
     <h2>Pass and play</h2>
-    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, go back and choose <b>Create a table</b> instead.</p>
+    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, ask the organizer for an invite link.</p>
     <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="row">
       <button class="ghost" type="button" id="addPlayer">Add player</button>
@@ -302,7 +303,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
     <label for="joinName">Your name<input id="joinName" maxlength="16" autocomplete="nickname"></label>
     <button class="btn primary" id="joinBtn" type="button">Take a seat</button>
     <div class="err" id="joinErr"></div>
-    <button class="ghost" id="joinHome" type="button">Start my own table instead</button>
+    <button class="ghost" id="joinHome" type="button">Back</button>
   </div>
 </div>
 

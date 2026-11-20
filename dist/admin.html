@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  /* Layout: one narrow column of cards — sign-in, game room switch, delegates, password. */
+  /* Layout: one narrow column of cards — sign-in, games, game room switch, delegates, password. */
   --felt: #164a3c;
   --felt-deep: #0f3529;
   --felt-line: #2b6b58;
@@ -58,6 +58,17 @@ td .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 td .actions button { padding: 5px 9px; font-size: 12px; }
 .tablewrap { overflow-x: auto; }
 .empty { color: var(--muted); }
+.games { display: flex; flex-direction: column; gap: 10px; }
+.game { border: 1px solid var(--felt-line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,.15); }
+.game .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.game .code { font-family: ui-monospace, Menlo, monospace; font-size: 20px; letter-spacing: .12em; color: var(--gold); }
+.game .label { color: var(--text); font-weight: 600; }
+.game .meta { font-size: 13px; color: var(--muted); }
+.game .link { display: flex; gap: 6px; flex-wrap: wrap; }
+.game .link input { flex: 1; min-width: 200px; font-size: 13px; }
+.pill.waiting { background: rgba(227,179,65,.15); color: var(--gold); }
+.pill.playing { background: rgba(111,209,139,.18); color: #b9f0c6; }
+.pill.finished { background: rgba(255,255,255,.1); color: var(--muted); }
 .hidden { display: none !important; }
 @media (max-width: 560px) { h1 { font-size: 24px; } th:nth-child(4), td:nth-child(4) { display: none; } }
 </style>
@@ -74,7 +85,7 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
   <!-- Sign in -->
   <form class="card hidden" id="loginCard">
     <h2>Sign in</h2>
-    <p>For the organizer and delegates. Players don't need an account: they join with an invite link.</p>
+    <p>For the organizer and delegates. Players don't need an account: they join with an invite link or a table code.</p>
     <label for="loginUser">Username<input id="loginUser" autocomplete="username" required></label>
     <label for="loginPass">Password<input id="loginPass" type="password" autocomplete="current-password" required></label>
     <button class="primary" type="submit">Sign in</button>
@@ -98,13 +109,22 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
   <!-- Delegate home -->
   <section class="card hidden" id="delegateCard">
     <h2>You're a delegate</h2>
-    <p>You can create tables in the game room and send the invite links. The admin manages delegate accounts.</p>
-    <div class="row">
-      <a href="/"><button class="primary" type="button">Go to the game room</button></a>
-      <button class="ghost" type="button" id="delegatePw">Change my password</button>
-    </div>
+    <p>You can launch games below and send the invite links. You see and manage only the games you launched. The admin manages delegate accounts.</p>
+    <div class="row"><button class="ghost" type="button" id="delegatePw">Change my password</button></div>
   </section>
 
+  <!-- Games -->
+  <section class="card hidden" id="gamesCard">
+    <h2>Games</h2>
+    <p>Launch a game, then send the players its invite link or table code. The first player to sit down is the host and deals the cards. Up to 4 players per table.</p>
+    <form class="row" id="newGame">
+      <label for="gLabel">Name for this game (optional)<input id="gLabel" maxlength="40" placeholder="Friday night"></label>
+      <button class="primary" type="submit" style="align-self:flex-end">Launch a new game</button>
+    </form>
+    <div class="err" id="gErr"></div>
+    <div class="games" id="gList"></div>
+    <div class="row" id="gAllActions"></div>
+  </section>
   <!-- Game room switch -->
   <section class="card hidden" id="siteCard">
     <h2>Game room</h2>
@@ -116,7 +136,7 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
   <!-- Delegates -->
   <section class="card hidden" id="delegatesCard">
     <h2>Delegates</h2>
-    <p>People you allow to create tables. Each gets a username and a temporary password, which they must change when they first sign in.</p>
+    <p>People you allow to launch games. Each gets a username and a temporary password, which they must change when they first sign in.</p>
     <form class="row" id="newDelegate">
       <label for="dName">Name<input id="dName" maxlength="30" placeholder="Isabella" required></label>
       <label for="dUser">Username<input id="dUser" maxlength="24" placeholder="isabella" autocapitalize="off" required></label>
@@ -144,7 +164,9 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
   let me = null;
   let state = null;
-  let confirming = null; // 'close' or 'delete:<username>'
+  let confirming = null; // 'close', 'endall', 'end:<code>' or 'delete:<username>'
+  let games = [];
+  let fresh = null; // code of the game just launched
 
   async function call(method, url, body) {
     const res = await fetch(url, {
@@ -164,6 +186,8 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
     me = r.user;
     state = null;
     if (me && me.role === 'admin' && !me.mustChange) state = await call('GET', '/api/admin/state');
+    games = [];
+    if (me && !me.mustChange) { const g = await call('GET', '/api/tables'); games = g.tables; if (!state) state = { site: g.site }; else state.site = g.site; }
     render();
   }
 
@@ -183,6 +207,9 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
       : 'At least 8 characters. It is stored only as a one-way hash, so nobody can read it back.';
     const isAdmin = signedIn && !mustChange && me.role === 'admin';
     show('delegateCard', signedIn && !mustChange && me.role === 'delegate' && !pwOpen);
+    const canPlay = signedIn && !mustChange && !pwOpen;
+    show('gamesCard', canPlay);
+    if (canPlay && state) renderGames();
     show('siteCard', isAdmin && !pwOpen);
     show('delegatesCard', isAdmin && !pwOpen);
     show('adminPwCard', isAdmin && !pwOpen);
@@ -195,11 +222,11 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
     $('sitePill').textContent = s.open ? 'Open' : 'Closed';
     $('sitePill').className = 'pill ' + (s.open ? 'open' : 'closed');
     $('siteText').textContent = s.open
-      ? (s.tables ? s.tables + ' table' + (s.tables === 1 ? '' : 's') + ', ' + s.playing + ' playing' : 'No tables right now')
-      : 'Nobody can create or join tables';
+      ? (s.tables ? s.tables + ' game' + (s.tables === 1 ? '' : 's') + ', ' + s.playing + ' being played' : 'No games right now')
+      : 'Nobody can launch or join games';
     $('siteHelp').textContent = s.open
-      ? 'Closing the game room ends every game immediately and stops anyone from creating or joining tables until you open it again. The server also stops by itself when nobody is connected, so you only pay while people play.'
-      : 'Open the game room to let you and your delegates create tables again.';
+      ? 'Closing the game room ends every game immediately and stops anyone from launching or joining games until you open it again. The server also stops by itself when nobody is connected, so you only pay while people play.'
+      : 'Open the game room to let you and your delegates launch games again.';
     const box = $('siteActions'); box.innerHTML = '';
     if (!s.open) {
       box.appendChild(btn('Open the game room', 'primary', () => doSite(true)));
@@ -212,6 +239,86 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
       box.appendChild(btn('Close the game room', 'danger', () => { confirming = 'close'; render(); }));
     }
   }
+
+  const linkFor = (g) => location.origin + '/t/' + g.code + '?m=' + encodeURIComponent(g.machine);
+  function renderGames() {
+    const open = state.site.open;
+    $('newGame').querySelector('button').disabled = !open;
+    $('gErr').textContent = open ? $('gErr').textContent : (me.role === 'admin'
+      ? 'The game room is closed. Open it below to launch games.' : 'The game room is closed. Ask the admin to open it.');
+    const list = $('gList'); list.innerHTML = '';
+    if (!games.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'No games right now.'; list.appendChild(p); }
+    games.forEach((g) => {
+      const box = document.createElement('div'); box.className = 'game';
+      const head = document.createElement('div'); head.className = 'head';
+      const code = document.createElement('span'); code.className = 'code'; code.textContent = g.code; head.appendChild(code);
+      if (g.label) { const l = document.createElement('span'); l.className = 'label'; l.textContent = g.label; head.appendChild(l); }
+      const pill = document.createElement('span'); pill.className = 'pill ' + g.status;
+      pill.textContent = g.status === 'waiting' ? 'Waiting for players' : g.status === 'playing' ? 'Playing · round ' + g.round : 'Finished' + (g.winner ? ' · ' + g.winner + ' won' : '');
+      head.appendChild(pill);
+      if (g.code === fresh) { const n = document.createElement('span'); n.className = 'ok'; n.textContent = 'Just launched'; head.appendChild(n); }
+      box.appendChild(head);
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const names = g.players.map((p) => p.name + (p.connected ? '' : ' (away)'));
+      meta.textContent = (names.length ? 'Players: ' + names.join(', ') : 'No players yet') +
+        ' · launched ' + fmt(g.created) + (me.role === 'admin' && g.createdBy !== me.username ? ' by ' + g.createdBy : '');
+      box.appendChild(meta);
+      const link = document.createElement('div'); link.className = 'link';
+      const input = document.createElement('input'); input.readOnly = true; input.value = linkFor(g); input.setAttribute('aria-label', 'Invite link for table ' + g.code);
+      link.appendChild(input);
+      link.appendChild(btn('Copy link', '', (e) => copy(e.target, input.value)));
+      if (confirming === 'end:' + g.code) {
+        link.appendChild(btn('Yes, end ' + g.code, 'danger', () => endGame(g.code)));
+        link.appendChild(btn('Cancel', 'ghost', () => { confirming = null; render(); }));
+      } else {
+        link.appendChild(btn('End this game', 'ghost', () => { confirming = 'end:' + g.code; render(); }));
+      }
+      box.appendChild(link);
+      list.appendChild(box);
+    });
+    const all = $('gAllActions'); all.innerHTML = '';
+    if (games.length > 1 || (games.length && confirming === 'endall')) {
+      if (confirming === 'endall') {
+        const t = document.createElement('span'); t.textContent = 'End all ' + games.length + ' games? Players are told the game has ended.';
+        all.appendChild(t);
+        all.appendChild(btn('Yes, end all games', 'danger', endAll));
+        all.appendChild(btn('Cancel', 'ghost', () => { confirming = null; render(); }));
+      } else {
+        all.appendChild(btn('End all games', 'danger', () => { confirming = 'endall'; render(); }));
+      }
+    }
+    if (games.length) all.appendChild(btn('Refresh', 'ghost', refreshGames));
+  }
+  async function copy(button, text) {
+    try { await navigator.clipboard.writeText(text); button.textContent = 'Copied'; }
+    catch (e) { button.textContent = 'Select and copy'; }
+    setTimeout(() => { button.textContent = 'Copy link'; }, 2000);
+  }
+  function applyGames(r) { games = r.tables; state.site = r.site; }
+  async function refreshGames() {
+    try { applyGames(await call('GET', '/api/tables')); } catch (e) { $('gErr').textContent = e.message; }
+    render();
+  }
+  async function endGame(code) {
+    confirming = null; fresh = null; $('gErr').textContent = '';
+    try { applyGames(await call('POST', '/api/tables/' + code + '/end', {})); } catch (e) { $('gErr').textContent = e.message; }
+    render();
+  }
+  async function endAll() {
+    confirming = null; fresh = null; $('gErr').textContent = '';
+    try { applyGames(await call('POST', '/api/tables/end-all', {})); } catch (e) { $('gErr').textContent = e.message; }
+    render();
+  }
+  $('newGame').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('gErr').textContent = '';
+    try {
+      const r = await call('POST', '/api/tables', { label: $('gLabel').value });
+      applyGames(r); fresh = r.table.code; $('gLabel').value = '';
+    } catch (err) { $('gErr').textContent = err.message; }
+    render();
+  });
+  setInterval(() => { if (me && !me.mustChange && !confirming && document.visibilityState === 'visible') refreshGames(); }, 15000);
 
   function renderDelegates() {
     const t = $('dTable');
@@ -264,6 +371,8 @@ td .actions button { padding: 5px 9px; font-size: 12px; }
   async function doSite(open) {
     confirming = null;
     try { state.site = (await call('POST', '/api/admin/site', { open })).site; } catch (e) { $('siteHelp').textContent = e.message; }
+    if (!open) games = [];
+    $('gErr').textContent = '';
     render();
   }
   async function delegate(username, body) {

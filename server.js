@@ -2,7 +2,8 @@
 // - Serves the game page (/ and /t/CODE) and the admin page (/admin).
 // - Runs online tables over WebSocket. The server holds every hand and checks every move with the
 //   rules engine; each player is sent only what they are allowed to see.
-// - Only the admin, or a delegate the admin has created, can create tables. Players join by invite link.
+// - Tables are set up only from the admin page (/admin), by the admin or a delegate the admin has created.
+//   The main page cannot create tables: players join with an invite link or a table code.
 // - Accounts, sessions, the open/closed switch and every table are saved to disk (store.js), so games
 //   survive restarts and the server can stop itself when nobody is playing.
 
@@ -25,7 +26,7 @@ const adminPage = fs.readFileSync(path.join(__dirname, 'dist', 'admin.html'));
 
 // ---------- saved state ----------
 const db = store.load();
-const tables = new Map(); // code -> { code, seats:[{name, token, ws}], game, chat, touched, createdBy }
+const tables = new Map(); // code -> { code, label, seats:[{name, token, ws}], game, chat, touched, created, createdBy }
 for (const t of Object.values(db.tables)) {
   tables.set(t.code, Object.assign(t, { seats: t.seats.map((s) => ({ name: s.name, token: s.token, ws: null })) }));
 }
@@ -39,7 +40,8 @@ if (temp) {
 
 function persistTable(t) {
   db.tables[t.code] = {
-    code: t.code, game: t.game, chat: t.chat, touched: t.touched, createdBy: t.createdBy,
+    code: t.code, label: t.label || '', game: t.game, chat: t.chat, touched: t.touched,
+    created: t.created || t.touched, createdBy: t.createdBy,
     seats: t.seats.map((s) => ({ name: s.name, token: s.token })),
   };
   store.save();
@@ -68,7 +70,7 @@ const userFromReq = (req) => store.userForToken(cookies(req)[COOKIE]);
 // ---------- tables ----------
 function lobbyInfo(t, seatIdx) {
   return {
-    code: t.code, machine: MACHINE, seat: seatIdx, isHost: seatIdx === 0, started: !!t.game,
+    code: t.code, label: t.label || '', machine: MACHINE, seat: seatIdx, isHost: seatIdx === 0, started: !!t.game,
     seats: t.seats.map((s) => ({ name: s.name, connected: !!(s.ws && s.ws.readyState === 1) })),
   };
 }
@@ -90,13 +92,26 @@ function joinSeat(ws, t, seatIdx) {
   send(ws, { type: 'chatHistory', messages: t.chat });
   broadcast(t);
 }
-function endAllTables(reason) {
-  for (const t of tables.values()) {
-    for (const s of t.seats) {
-      if (s.ws) { send(s.ws, { type: 'closed', error: reason }); try { s.ws.close(); } catch (e) { /* ignore */ } }
-    }
+function endTable(t, reason) {
+  for (const s of t.seats) {
+    if (s.ws) { send(s.ws, { type: 'closed', error: reason }); try { s.ws.close(); } catch (e) { /* ignore */ } }
   }
-  tables.clear(); db.tables = {}; store.save();
+  tables.delete(t.code); delete db.tables[t.code];
+}
+function endAllTables(reason) {
+  for (const t of Array.from(tables.values())) endTable(t, reason);
+  store.save();
+}
+function tableSummary(t) {
+  const g = t.game;
+  let status = 'waiting';
+  if (g) status = g.winner != null ? 'finished' : 'playing';
+  return {
+    code: t.code, label: t.label || '', machine: MACHINE, createdBy: t.createdBy, created: t.created || t.touched,
+    touched: t.touched, status, round: g ? g.roundNumber : 0,
+    winner: g && g.winner != null ? g.players[g.winner].name : null,
+    players: t.seats.map((s) => ({ name: s.name, connected: !!(s.ws && s.ws.readyState === 1) })),
+  };
 }
 
 const ACTIONS = {
@@ -115,14 +130,7 @@ function handle(ws, msg) {
   const name = String(msg.name || '').trim().slice(0, 16);
 
   if (msg.type === 'create') {
-    if (!db.site.open) return send(ws, { type: 'error', error: CLOSED_MSG });
-    const user = store.userForToken(ws.sessionToken);
-    if (!user) return send(ws, { type: 'error', error: 'Only the organizer or a delegate can create tables. Sign in first.' });
-    if (user.mustChange) return send(ws, { type: 'error', error: 'Choose your own password on the sign-in page first.' });
-    if (!name) return send(ws, { type: 'error', error: 'Type your name first.' });
-    const t = { code: newCode(), seats: [{ name, token: newToken(), ws: null }], game: null, chat: [], touched: Date.now(), createdBy: user.username };
-    tables.set(t.code, t);
-    return joinSeat(ws, t, 0);
+    return send(ws, { type: 'error', error: 'Games are set up by the organizer on the admin page. Ask for an invite link or a table code.' });
   }
 
   if (msg.type === 'join') {
@@ -156,7 +164,7 @@ function handle(ws, msg) {
     return;
   }
   if (msg.type === 'start') {
-    if (me !== 0) return send(ws, { type: 'error', error: 'Only the player who created the table can deal.' });
+    if (me !== 0) return send(ws, { type: 'error', error: 'Only the host (the first player to sit down) can deal.' });
     if (t.game && t.game.winner == null) return send(ws, { type: 'error', error: 'The game has already started.' });
     if (t.seats.length < 2) return send(ws, { type: 'error', error: 'Wait for at least one more player.' });
     t.game = S.newGame(t.seats.map((s) => s.name));
@@ -247,6 +255,38 @@ async function api(req, res, url) {
     user.mustChange = false;
     store.endSessionsFor(user.username);
     return json(res, 200, { user: store.publicUser(user) }, { 'Set-Cookie': sessionCookie(store.createSession(user.username), 14 * 86400) });
+  }
+
+  // ---- Tables: the admin manages every table; a delegate manages the tables they set up. ----
+  if (p.startsWith('/api/tables')) {
+    if (user.mustChange) return json(res, 403, { error: 'Choose your own password first.' });
+    if (user.status !== 'active') return json(res, 403, { error: 'This account is paused.' });
+    const mine = (t) => user.role === 'admin' || t.createdBy === user.username;
+    const list = () => Array.from(tables.values()).filter(mine).sort((a, b) => (b.created || 0) - (a.created || 0)).map(tableSummary);
+    if (p === '/api/tables' && req.method === 'GET') return json(res, 200, { site: siteInfo(), tables: list() });
+    if (p === '/api/tables' && req.method === 'POST') {
+      if (!db.site.open) return json(res, 400, { error: 'The game room is closed. Open it first.' });
+      const now = Date.now();
+      const t = { code: newCode(), label: String(body.label || '').trim().slice(0, 40), seats: [], game: null, chat: [],
+        touched: now, created: now, createdBy: user.username };
+      tables.set(t.code, t); persistTable(t);
+      return json(res, 200, { table: tableSummary(t), site: siteInfo(), tables: list() });
+    }
+    if (p === '/api/tables/end-all' && req.method === 'POST') {
+      const by = user.role === 'admin' ? 'The organizer' : user.name;
+      for (const t of Array.from(tables.values()).filter(mine)) endTable(t, by + ' has ended this game.');
+      store.save();
+      return json(res, 200, { site: siteInfo(), tables: list() });
+    }
+    const tm = p.match(/^\/api\/tables\/([A-Z0-9]+)\/end$/);
+    if (tm && req.method === 'POST') {
+      const t = tables.get(tm[1]);
+      if (!t || !mine(t)) return json(res, 404, { error: 'That table no longer exists.' });
+      endTable(t, (user.role === 'admin' ? 'The organizer' : user.name) + ' has ended this game.');
+      store.save();
+      return json(res, 200, { site: siteInfo(), tables: list() });
+    }
+    return json(res, 404, { error: 'Not found.' });
   }
 
   // Everything below is for the admin only.

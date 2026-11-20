@@ -49,36 +49,26 @@
 
   // ---------- home ----------
   const savedName = store.get('name') || '';
-  $('onlineName').value = savedName;
   $('joinName').value = savedName;
 
-  $('createBtn').onclick = () => {
-    const name = $('onlineName').value.trim();
-    if (!name) { $('homeErr').textContent = 'Type your name first.'; return; }
-    store.set('name', name);
-    mode = 'online';
-    connect(() => send({ type: 'create', name }));
-  };
+  $('codeForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const code = $('codeInput').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.length < 4) { $('homeErr').textContent = 'Type the table code you were given (4 letters or numbers).'; return; }
+    location.href = '/t/' + code;
+  });
   $('localBtn').onclick = () => { show('home', false); show('setup', true); renderNameFields(); };
   $('backHome').onclick = () => { show('setup', false); show('home', true); };
   $('joinHome').onclick = () => { history.replaceState(null, '', '/'); show('join', false); show('home', true); };
 
-  // Who is signed in, and is the game room open?
+  // Is the game room open? Tables are set up only from the admin page.
   async function loadAccount() {
-    let me = null, open = true;
-    try { const r = await (await fetch('/api/me', { credentials: 'same-origin' })).json(); me = r.user; open = r.site.open; } catch (e) { /* offline */ }
-    const canCreate = open && me && !me.mustChange && me.status === 'active';
-    show('createBox', !!canCreate);
-    show('signInNote', open && !canCreate);
+    let open = true;
+    try { const r = await (await fetch('/api/me', { credentials: 'same-origin' })).json(); open = r.site.open; } catch (e) { /* offline */ }
     $('onlineIntro').textContent = open
-      ? 'Create a table, then send the invite link. Everyone plays from their own phone or computer.'
+      ? 'To join a game you need an invite link or a table code from the organizer. Got a link? Just open it. Got a code? Type it here.'
       : 'The game room is closed right now. Ask the organizer to open it.';
-    if (canCreate) {
-      $('signedInAs').innerHTML = 'Signed in as <b></b> · <a href="/admin">Account</a>';
-      $('signedInAs').querySelector('b').textContent = me.name;
-      if (!$('onlineName').value) $('onlineName').value = me.name;
-    }
-    if (me && me.mustChange && open) $('signInNote').innerHTML = 'Choose your own password first: <a href="/admin">go to the sign-in page</a>.';
+    show('codeForm', open);
   }
   loadAccount();
 
@@ -436,7 +426,7 @@
     const waiting = mode === 'online' && online.joined && lobby && (!lobby.started || !view);
     show('lobby', !!waiting);
     if (!waiting) return;
-    $('lobbyCode').textContent = lobby.code;
+    $('lobbyCode').textContent = lobby.code + (lobby.label ? ' · ' + lobby.label : '');
     $('inviteLink').value = inviteUrl();
     const list = $('seatList'); list.innerHTML = '';
     lobby.seats.forEach((s, i) => {
@@ -449,7 +439,7 @@
     $('startBtn').disabled = lobby.seats.length < 2;
     $('lobbyNote').textContent = lobby.isHost
       ? (lobby.seats.length < 2 ? 'Waiting for at least one more player…' : 'Deal when everyone is here.')
-      : 'Waiting for ' + lobby.seats[0].name + ' to deal…';
+      : 'Waiting for ' + lobby.seats[0].name + ' (the host) to deal…';
     $('lobbyErr').textContent = message.kind === 'err' ? message.text : '';
   }
 
