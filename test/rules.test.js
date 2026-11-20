@@ -441,3 +441,20 @@ test('same card twice in a set gives a clear reason', () => {
   const r = S.splitIntoMelds([{ id: 1, rank: 1, suit: 'S' }, { id: 2, rank: 1, suit: 'S' }, { id: 3, rank: 0, suit: null }]);
   assert.ok(!r.ok); assert.match(r.error, /twice/);
 });
+
+test('set joker: no swap with two real cards, swap only for the missing suit with three', () => {
+  const S = require('../src/engine.js');
+  function setup(meld, hand) {
+    const g = S.newGame(['A', 'B'], null, () => 0.5); const r = g.round;
+    if (r.phase === 'draw') S.drawStock(g);
+    r.turnState.startOpened = true;
+    r.melds.push({ id: 99, owner: 1, type: 'set', entries: meld.map((c) => ({ card: c })) });
+    r.hands[r.turn].push(...hand); return g;
+  }
+  const J = { id: 500, rank: 0, suit: null };
+  const c = (id, suit) => ({ id, rank: 7, suit });
+  assert.ok(!S.swapJoker(setup([c(501, 'C'), c(502, 'D'), J], [c(600, 'H')]), 99, 600).ok);
+  assert.ok(!S.swapJoker(setup([c(501, 'C'), c(502, 'D'), J], [c(600, 'S')]), 99, 600).ok);
+  assert.ok(S.swapJoker(setup([c(501, 'C'), c(502, 'D'), c(503, 'H'), J], [c(600, 'S')]), 99, 600).ok);
+  assert.ok(!S.swapJoker(setup([c(501, 'C'), c(502, 'D'), c(503, 'H'), J], [c(600, 'H')]), 99, 600).ok);
+});
