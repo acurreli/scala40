@@ -268,31 +268,11 @@ table.scores td.num, table.scores th.num { text-align: right; }
       </form>
       <div class="err" id="homeErr"></div>
     </div>
-    <div class="section">
-      <h3>Pass and play</h3>
-      <p>Everyone shares this one screen and takes turns. No invite link needed.</p>
-      <button class="btn" id="localBtn" type="button">Set up players</button>
-    </div>
     <div class="row" style="justify-content:space-between;align-items:center">
       <button class="linkbtn" id="homeRules" type="button">Click here for the rules</button>
       <a class="ghost" id="adminBtn" href="/admin" style="text-decoration:none">Admin</a>
     </div>
   </div>
-</div>
-
-<!-- Pass-and-play setup -->
-<div class="overlay hidden" id="setup">
-  <form class="panel" id="setupForm">
-    <h2>Pass and play</h2>
-    <p>Hands stay hidden between turns: pass the device when asked. To play from separate phones, ask the organizer for an invite link.</p>
-    <div id="nameFields" style="display:flex;flex-direction:column;gap:8px"></div>
-    <div class="row">
-      <button class="ghost" type="button" id="addPlayer">Add player</button>
-      <button class="ghost" type="button" id="removePlayer">Remove player</button>
-      <button class="ghost" type="button" id="backHome">Back</button>
-    </div>
-    <button class="btn primary" type="submit">Deal the cards</button>
-  </form>
 </div>
 
 <!-- Join from an invite link -->
@@ -974,8 +954,6 @@ table.scores td.num, table.scores th.num { text-align: right; }
     if (code.length < 4) { $('homeErr').textContent = 'Type the table code you were given (4 letters or numbers).'; return; }
     location.href = '/t/' + code;
   });
-  $('localBtn').onclick = () => { show('home', false); show('setup', true); renderNameFields(); };
-  $('backHome').onclick = () => { show('setup', false); show('home', true); };
   $('joinHome').onclick = () => { history.replaceState(null, '', '/'); show('join', false); show('home', true); };
 
   // Is the game room open? Tables are set up only from the admin page.
@@ -989,34 +967,6 @@ table.scores td.num, table.scores th.num { text-align: right; }
   }
   loadAccount();
 
-  // ---------- pass and play ----------
-  let names = ['Player 1', 'Player 2', 'Player 3'];
-  function renderNameFields() {
-    const box = $('nameFields');
-    box.innerHTML = '';
-    names.forEach((n, i) => {
-      const label = document.createElement('label');
-      label.htmlFor = 'pname' + i;
-      label.textContent = 'Player ' + (i + 1);
-      const input = document.createElement('input');
-      input.id = 'pname' + i; input.value = n; input.maxLength = 16;
-      input.addEventListener('input', () => { names[i] = input.value; });
-      label.appendChild(input);
-      box.appendChild(label);
-    });
-    $('addPlayer').disabled = names.length >= 4;
-    $('removePlayer').disabled = names.length <= 2;
-  }
-  $('addPlayer').onclick = () => { if (names.length < 4) { names.push('Player ' + (names.length + 1)); renderNameFields(); } };
-  $('removePlayer').onclick = () => { if (names.length > 2) { names.pop(); renderNameFields(); } };
-  $('setupForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    mode = 'local';
-    localGame = S.newGame(names.map((n, i) => (n || '').trim() || 'Player ' + (i + 1)));
-    resetUi();
-    show('setup', false);
-    refreshLocal();
-  });
   function refreshLocal() { view = S.viewFor(localGame, localGame.round.turn); render(); }
   function resetUi() { selected.clear(); revealedFor = null; lastDrawnId = null; handOrder = {}; say(''); }
 
@@ -1272,7 +1222,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       if (view.winner != null) send({ type: 'start' }); else send({ type: 'next' });
       return;
     }
-    if (view.winner != null) { localGame = null; view = null; show('roundOver', false); show('setup', true); renderNameFields(); return; }
+    if (view.winner != null) { localGame = null; view = null; show('roundOver', false); show('home', true); return; }
     S.nextRound(localGame); resetUi(); refreshLocal();
   };
   $('rulesBtn').onclick = $('rulesLink').onclick = $('homeRules').onclick = $('lobbyRules').onclick = () => show('rules', true);

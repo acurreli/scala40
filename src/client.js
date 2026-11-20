@@ -57,8 +57,6 @@
     if (code.length < 4) { $('homeErr').textContent = 'Type the table code you were given (4 letters or numbers).'; return; }
     location.href = '/t/' + code;
   });
-  $('localBtn').onclick = () => { show('home', false); show('setup', true); renderNameFields(); };
-  $('backHome').onclick = () => { show('setup', false); show('home', true); };
   $('joinHome').onclick = () => { history.replaceState(null, '', '/'); show('join', false); show('home', true); };
 
   // Is the game room open? Tables are set up only from the admin page.
@@ -72,34 +70,6 @@
   }
   loadAccount();
 
-  // ---------- pass and play ----------
-  let names = ['Player 1', 'Player 2', 'Player 3'];
-  function renderNameFields() {
-    const box = $('nameFields');
-    box.innerHTML = '';
-    names.forEach((n, i) => {
-      const label = document.createElement('label');
-      label.htmlFor = 'pname' + i;
-      label.textContent = 'Player ' + (i + 1);
-      const input = document.createElement('input');
-      input.id = 'pname' + i; input.value = n; input.maxLength = 16;
-      input.addEventListener('input', () => { names[i] = input.value; });
-      label.appendChild(input);
-      box.appendChild(label);
-    });
-    $('addPlayer').disabled = names.length >= 4;
-    $('removePlayer').disabled = names.length <= 2;
-  }
-  $('addPlayer').onclick = () => { if (names.length < 4) { names.push('Player ' + (names.length + 1)); renderNameFields(); } };
-  $('removePlayer').onclick = () => { if (names.length > 2) { names.pop(); renderNameFields(); } };
-  $('setupForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    mode = 'local';
-    localGame = S.newGame(names.map((n, i) => (n || '').trim() || 'Player ' + (i + 1)));
-    resetUi();
-    show('setup', false);
-    refreshLocal();
-  });
   function refreshLocal() { view = S.viewFor(localGame, localGame.round.turn); render(); }
   function resetUi() { selected.clear(); revealedFor = null; lastDrawnId = null; handOrder = {}; say(''); }
 
@@ -355,7 +325,7 @@
       if (view.winner != null) send({ type: 'start' }); else send({ type: 'next' });
       return;
     }
-    if (view.winner != null) { localGame = null; view = null; show('roundOver', false); show('setup', true); renderNameFields(); return; }
+    if (view.winner != null) { localGame = null; view = null; show('roundOver', false); show('home', true); return; }
     S.nextRound(localGame); resetUi(); refreshLocal();
   };
   $('rulesBtn').onclick = $('rulesLink').onclick = $('homeRules').onclick = $('lobbyRules').onclick = () => show('rules', true);
