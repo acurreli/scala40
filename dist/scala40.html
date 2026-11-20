@@ -1165,7 +1165,18 @@ table.scores td.num, table.scores th.num { text-align: right; }
       lastDrawnId = info.cardId;
       say(action === 'take' ? 'Use the card you took in a combination this turn.' : '', 'ok');
       pendingFly = { from: action === 'take' ? 'discard' : 'stock', id: info.cardId };
-    } else if (action === 'lay') say('Laid down ' + (info.count > 1 ? info.count + ' combinations' : 'a combination') + ', worth ' + info.value + ' points.', 'ok');
+    } else if (action === 'lay') {
+      // `view` still holds the state from before this lay (local and online alike).
+      const ts = view.turnState;
+      let tail = '';
+      if (ts && !ts.startOpened) {
+        const total = ts.newMeldPoints + (info.value || 0);
+        tail = total >= view.openingPoints
+          ? ' You have opened (' + total + ' points). Discard to end your turn; from your next turn you can attach cards to any combination.'
+          : ' Opening total: ' + total + ' / ' + view.openingPoints + '.';
+      }
+      say('Laid down ' + (info.count > 1 ? info.count + ' combinations' : 'a combination') + ', worth ' + info.value + ' points.' + tail, 'ok');
+    }
     else if (action === 'attach') say('Attached.', 'ok');
     else if (action === 'swap') say('You took the joker. Use it in a combination this turn.', 'ok');
     else if (action === 'reset') say('Turn undone: you are back to just after your draw.', 'ok');
@@ -1409,7 +1420,9 @@ table.scores td.num, table.scores th.num { text-align: right; }
       e.textContent = 'No combinations on the table yet. Open with sets and runs worth at least ' + view.openingPoints + ' points.';
       mbox.appendChild(e);
     }
-    const canTarget = playing && selected.size > 0 && ts && ts.startOpened;
+    // Melds are tappable whenever cards are selected, so a not-yet-allowed attach
+    // gets the engine's explanation instead of silently doing nothing.
+    const canTarget = playing && selected.size > 0 && !!ts;
     view.melds.forEach((m) => {
       const box = document.createElement('div');
       box.className = 'meld' + (canTarget ? ' target' : '');
@@ -1441,8 +1454,9 @@ table.scores td.num, table.scores th.num { text-align: right; }
     const prog = $('progress');
     if (!over && !view.players[me].opened && !hidden) {
       const pts = ts ? ts.newMeldPoints : 0;
-      prog.textContent = 'Opening ' + pts + ' / ' + view.openingPoints;
-      prog.className = 'progress' + (pts >= view.openingPoints ? ' done' : '');
+      const reached = pts >= view.openingPoints;
+      prog.textContent = reached ? 'Opened ✓ ' + pts + ' pts' : 'Opening ' + pts + ' / ' + view.openingPoints;
+      prog.className = 'progress' + (reached ? ' done' : '');
     } else { prog.textContent = ''; prog.className = 'progress hidden'; }
     const msg = $('msg'); msg.textContent = message.text; msg.className = 'msg ' + message.kind;
 
