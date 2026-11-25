@@ -340,9 +340,17 @@ async function api(req, res, url) {
 }
 
 // ---------- HTTP + WebSocket ----------
+// The game lives at one address; the old ones forward there (same page, same invite code).
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'play.scala40.angelocurreli.com';
+const OLD_HOSTS = new Set(['scala40.fly.dev', 'play.angelocurreli.com']);
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/health') { res.writeHead(200); return res.end('ok'); }
+  const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  if (OLD_HOSTS.has(host)) {
+    res.writeHead(301, { Location: 'https://' + PUBLIC_HOST + url.pathname + url.search, 'Cache-Control': 'no-cache' });
+    return res.end();
+  }
   if (url.pathname.startsWith('/api/')) {
     return api(req, res, url).catch((e) => { console.error(e); json(res, 500, { error: 'Something went wrong on the server.' }); });
   }

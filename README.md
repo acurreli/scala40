@@ -1,6 +1,6 @@
 # Scala 40
 
-Scala 40 (Italian rummy) for friends — live at https://scala40.fly.dev
+Scala 40 (Italian rummy) for friends — live at https://play.scala40.angelocurreli.com (the old addresses scala40.fly.dev and play.angelocurreli.com forward there)
 
 - **Play online:** the organizer (admin) or a delegate signs in at `/admin`, creates a table on the home page and sends the invite link. 2–4 players, each on their own device. Players never need an account.
 - **Pass and play:** everyone shares one screen.
