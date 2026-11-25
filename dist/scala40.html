@@ -331,7 +331,7 @@ table.scores td.num, table.scores th.num { text-align: right; }
       <li><b>Your turn:</b> draw one card (stock or top discard), lay down or attach if you can, then discard one card.</li>
       <li><b>Sets:</b> 3–4 cards of the same rank, all different suits. <b>Runs:</b> 3+ consecutive cards of one suit; Ace low (A‑2‑3) or high (Q‑K‑A), no wrap-around. One joker per combination.</li>
       <li><b>Opening:</b> your first lay-down must total 40+ points in your own new combinations. Ace = 1 in A‑2‑3, otherwise 11; K/Q/J = 10.</li>
-      <li><b>Taking the discard:</b> only if you use it in a combination this turn.</li>
+      <li><b>Taking the discard:</b> only if you use it in a combination this turn. If you can't, press "Put it back" (or discard that same card): it goes back on the pile and you draw from the deck instead.</li>
       <li><b>Attaching and joker swaps:</b> from the turn after you open. Select cards, then click a combination. To swap a joker, select the real card it stands for and click that combination; you must use the joker this turn. In a set, the joker can be swapped only when it's clearly the fourth card (three real cards + joker); with two real cards + joker it stays put.</li>
       <li><b>Going out:</b> lay down everything but one card, then discard it.</li>
       <li><b>Penalties:</b> Joker 25, Ace 11, K/Q/J 10, others face value; never opened = 100. Going out in one turn without having opened doubles them. 101 = eliminated.</li>
@@ -844,7 +844,8 @@ table.scores td.num, table.scores th.num { text-align: right; }
     }
     if (ts.jokersToUse.length) return fail('You must use the joker you took from the table this turn.');
     if (!ts.startOpened && ts.newMeldIds.length > 0 && ts.newMeldPoints < g.opts.openingPoints) {
-      return fail(`To open you need at least ${g.opts.openingPoints} points (you have ${ts.newMeldPoints}). Add combinations or reset the turn.`);
+      return fail(`To open you need at least ${g.opts.openingPoints} points (you have ${ts.newMeldPoints}). Add combinations or reset the turn` +
+        (ts.tookDiscardId != null ? ', or press "Put it back" to return the card you took and draw from the deck.' : '.'));
     }
     if (!ts.startOpened && ts.newMeldPoints >= g.opts.openingPoints) {
       r.opened[r.turn] = true;
@@ -1257,7 +1258,13 @@ table.scores td.num, table.scores th.num { text-align: right; }
   $('stockBtn').onclick = () => act('draw');
   $('discardBtn').onclick = () => act('take');
   $('layBtn').onclick = () => act('lay', { ids: Array.from(selected) });
-  $('discardSelBtn').onclick = () => act('discard', { id: Array.from(selected)[0] });
+  $('discardSelBtn').onclick = () => {
+    const id = Array.from(selected)[0];
+    const ts = view && view.turnState;
+    // Discarding the card you just took from the pile means "I can't use it": put it back and draw from the deck.
+    if (ts && ts.tookDiscardId != null && id === ts.tookDiscardId) return act('putBack');
+    act('discard', { id });
+  };
   $('resetBtn').onclick = () => act('reset');
   $('putBackBtn').onclick = () => act('putBack');
   $('clearBtn').onclick = () => { selected.clear(); render(); };
@@ -1491,7 +1498,10 @@ table.scores td.num, table.scores th.num { text-align: right; }
     $('discardSelBtn').disabled = !playing || selected.size !== 1;
     $('resetBtn').disabled = !playing;
     const tookId = playing && ts ? ts.tookDiscardId : null;
-    const canPutBack = tookId != null && view.hand.some((c) => c.id === tookId);
+    // Offer "Put it back" while the taken card is still in hand, or if it went into combinations
+    // that don't reach the opening points (putting it back undoes those too).
+    const canPutBack = tookId != null && (view.hand.some((c) => c.id === tookId)
+      || (!ts.startOpened && ts.newMeldPoints < view.openingPoints));
     show('putBackBtn', canPutBack);
     document.querySelector('.actions').classList.toggle('five', canPutBack);
     $('clearBtn').disabled = selected.size === 0;

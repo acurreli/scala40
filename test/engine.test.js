@@ -132,3 +132,21 @@ test('putting the discard back returns it and draws from the stock', () => {
   assert.strictEqual(g.round.phase, 'play');
   assert.ok(S.discard(g, g.round.hands[0][0].id).ok);
 });
+
+test('the taken discard can be put back even after laying it in a combination that does not open', () => {
+  const top = c(4, 'H');
+  const stockCard = c(10, 'C');
+  const g = rigged([[c(2, 'H'), c(3, 'H'), c(9, 'S')], [c(5, 'S')], [c(6, 'S')]], top, [stockCard]);
+  assert.ok(S.takeDiscard(g).ok);
+  const ids = g.round.hands[0].filter((x) => x.suit === 'H').map((x) => x.id);
+  assert.ok(S.layMeld(g, ids).ok); // 2-3-4 of hearts = 9 points, not enough to open
+  const bad = S.discard(g, g.round.hands[0][0].id);
+  assert.ok(!bad.ok && /Put it back/.test(bad.error));
+  const res = S.returnDiscard(g);
+  assert.ok(res.ok);
+  assert.strictEqual(g.round.melds.length, 0);
+  assert.strictEqual(g.round.discard[g.round.discard.length - 1].id, top.id);
+  assert.strictEqual(g.round.hands[0].length, 4);
+  assert.ok(g.round.hands[0].some((x) => x.id === stockCard.id));
+  assert.ok(S.discard(g, stockCard.id).ok);
+});

@@ -486,7 +486,8 @@
     }
     if (ts.jokersToUse.length) return fail('You must use the joker you took from the table this turn.');
     if (!ts.startOpened && ts.newMeldIds.length > 0 && ts.newMeldPoints < g.opts.openingPoints) {
-      return fail(`To open you need at least ${g.opts.openingPoints} points (you have ${ts.newMeldPoints}). Add combinations or reset the turn.`);
+      return fail(`To open you need at least ${g.opts.openingPoints} points (you have ${ts.newMeldPoints}). Add combinations or reset the turn` +
+        (ts.tookDiscardId != null ? ', or press "Put it back" to return the card you took and draw from the deck.' : '.'));
     }
     if (!ts.startOpened && ts.newMeldPoints >= g.opts.openingPoints) {
       r.opened[r.turn] = true;

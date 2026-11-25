@@ -309,7 +309,13 @@
   $('stockBtn').onclick = () => act('draw');
   $('discardBtn').onclick = () => act('take');
   $('layBtn').onclick = () => act('lay', { ids: Array.from(selected) });
-  $('discardSelBtn').onclick = () => act('discard', { id: Array.from(selected)[0] });
+  $('discardSelBtn').onclick = () => {
+    const id = Array.from(selected)[0];
+    const ts = view && view.turnState;
+    // Discarding the card you just took from the pile means "I can't use it": put it back and draw from the deck.
+    if (ts && ts.tookDiscardId != null && id === ts.tookDiscardId) return act('putBack');
+    act('discard', { id });
+  };
   $('resetBtn').onclick = () => act('reset');
   $('putBackBtn').onclick = () => act('putBack');
   $('clearBtn').onclick = () => { selected.clear(); render(); };
@@ -543,7 +549,10 @@
     $('discardSelBtn').disabled = !playing || selected.size !== 1;
     $('resetBtn').disabled = !playing;
     const tookId = playing && ts ? ts.tookDiscardId : null;
-    const canPutBack = tookId != null && view.hand.some((c) => c.id === tookId);
+    // Offer "Put it back" while the taken card is still in hand, or if it went into combinations
+    // that don't reach the opening points (putting it back undoes those too).
+    const canPutBack = tookId != null && (view.hand.some((c) => c.id === tookId)
+      || (!ts.startOpened && ts.newMeldPoints < view.openingPoints));
     show('putBackBtn', canPutBack);
     document.querySelector('.actions').classList.toggle('five', canPutBack);
     $('clearBtn').disabled = selected.size === 0;
